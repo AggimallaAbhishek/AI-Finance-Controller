@@ -74,6 +74,8 @@ code {
 
 button {
   font: inherit;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .muted {
@@ -183,6 +185,7 @@ button {
   font-size: 40px;
   font-weight: 700;
   color: var(--accent);
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-primary__label {
@@ -212,6 +215,7 @@ button {
   font-size: 20px;
   font-weight: 600;
   color: var(--text-h);
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-strip__item--warn dd {
@@ -328,6 +332,7 @@ button {
 .detail-grid dd {
   margin: 2px 0 0;
   color: var(--text-h);
+  font-variant-numeric: tabular-nums;
 }
 
 .empty-state {
@@ -359,6 +364,7 @@ button {
 .chat-panel__messages {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 16px;
   display: flex;
   flex-direction: column;

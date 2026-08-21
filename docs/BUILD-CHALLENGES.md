@@ -101,6 +101,39 @@ prefixes (`STL`/`BTXN`) when walking a list, not just dict fields. Verified
 against both repros, then re-ran the full regression suite (ground-truth
 validation + API smoke tests) — no regressions.
 
+### Phase 6 — Q&A agent's markdown answers rendered as raw text
+**Issue:** The backend `/qa` agent naturally produces markdown (bold,
+tables — confirmed in Phase 5 testing). The chat panel initially rendered
+`res.answer` as plain text, so `**90%**` showed literal asterisks and
+"unmatched bank entries" answers (which come back as full markdown tables)
+rendered as unreadable pipe-delimited text.
+**Fix:** Added `react-markdown` + `remark-gfm` (table support) to render
+assistant messages properly, with a custom `table` renderer that wraps
+tables in a horizontally-scrollable container — the chat sidebar is only
+~330px wide and Q&A tables can have 5 columns.
+
+### Phase 6 — focus ring clipped by the exception list's `overflow: hidden`
+**Issue:** `.exception-list__items` used `overflow: hidden` to clip its
+children's corners to the container's `border-radius`. This also clipped
+the `outline` (with `outline-offset: 2px`) of any focused row's button,
+leaving keyboard-focused rows with no visible focus indicator — a real
+accessibility regression, confirmed visually via a zoomed screenshot.
+**Fix:** Removed the `overflow: hidden` and instead rounded the first/last
+row's own corners directly (via longhand `border-*-radius` properties so
+both rules combine correctly when there's only one row). Confirmed the
+focus ring now renders as a full, unclipped, correctly-rounded outline.
+
+### Phase 6 — mobile chat toggle button overlapped the chat input
+**Issue:** The mobile slide-over chat panel used `top: auto` on its fixed
+positioning, which (combined with the inner panel's `height: 100%`)
+produced an ambiguous, content-sized box rather than a full-viewport
+overlay. The fixed-position toggle button (higher z-index) then visually
+overlapped the chat form's input and Send button at the bottom of the
+screen — confirmed via screenshot on a narrow viewport.
+**Fix:** Changed the overlay to fill the full viewport (`inset: 0`, no
+`top: auto`) with `padding-bottom` reserving space for the toggle button,
+so the input row always sits above it instead of underneath.
+
 ---
 
 ## Template for new entries

@@ -40,7 +40,7 @@ export default function ChatPanel({ runId }) {
     } catch (e) {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: `Sorry, I couldn't reach the Q&A agent: ${e.message}`, isError: true },
+        { role: 'assistant', content: `Sorry, I couldn’t reach the Q&A agent: ${e.message}`, isError: true },
       ])
     } finally {
       setSending(false)
@@ -59,10 +59,10 @@ export default function ChatPanel({ runId }) {
     <aside className="chat-panel" aria-label="Ask about this batch">
       <h2>Ask about this batch</h2>
 
-      <div className="chat-panel__messages" ref={listRef}>
+      <div className="chat-panel__messages" ref={listRef} role="log" aria-live="polite">
         {messages.length === 0 && (
           <div className="chat-panel__empty">
-            <p className="muted">Ask a question grounded in this run's data.</p>
+            <p className="muted">Ask a question grounded in this run’s data.</p>
             <div className="chat-panel__suggestions">
               {SUGGESTIONS.map((s) => (
                 <button key={s} type="button" onClick={() => send(s)} disabled={sending}>
@@ -95,7 +95,7 @@ export default function ChatPanel({ runId }) {
         ))}
 
         {sending && (
-          <div className="chat-msg chat-msg--assistant chat-msg--pending" aria-live="polite">
+          <div className="chat-msg chat-msg--assistant chat-msg--pending">
             <span className="typing-dots">
               <span />
               <span />
@@ -111,6 +111,7 @@ export default function ChatPanel({ runId }) {
         </label>
         <input
           id="chat-input"
+          name="question"
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}

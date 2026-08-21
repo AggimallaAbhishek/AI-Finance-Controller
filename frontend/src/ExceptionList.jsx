@@ -47,9 +47,9 @@ function ExceptionRow({ exception, runId }) {
       </button>
 
       {expanded && (
-        <div className="exception-row__detail">
+        <div className="exception-row__detail" aria-live="polite">
           {loading && <p className="muted">Loading source record…</p>}
-          {error && <p className="error-text">Couldn't load detail: {error}</p>}
+          {error && <p className="error-text">Couldn’t load detail: {error}</p>}
           {record && (
             <dl className="detail-grid">
               <div>

@@ -6,9 +6,9 @@ full architecture and phase plan.
 
 ## Status
 
-Phase 0 (setup) through Phase 5 (Q&A agent) complete. Match rate on the
-seed-42 batch: 90% (48 rule-matched + 6 LLM-reasoned), validated 66/66
-correct against `ground_truth.csv`.
+Phase 0 (setup) through Phase 6 (frontend dashboard) complete. Match rate
+on the seed-42 batch: 90% (48 rule-matched + 6 LLM-reasoned), validated
+66/66 correct against `ground_truth.csv`.
 
 ## Running locally
 
@@ -84,4 +84,11 @@ cd frontend
 npm run dev
 ```
 
-Frontend runs at http://localhost:5173, backend at http://localhost:8000.
+Frontend runs at http://localhost:5173, backend at http://localhost:8000
+(both must be running). Dashboard shows the latest run's match-rate
+summary, a browsable exception list (click a row to lazy-load its full
+source-record detail via `/audit/{id}`), and a chat panel wired to `/qa`
+with Markdown-rendered answers and source-record citations. Responsive:
+the chat becomes a slide-over panel below ~900px. No new state/routing
+libraries — plain React + fetch, extending the existing CSS theme
+variables. Set `VITE_API_BASE` to point at a non-default backend URL.
