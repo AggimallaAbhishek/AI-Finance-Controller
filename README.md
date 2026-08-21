@@ -6,9 +6,9 @@ full architecture and phase plan.
 
 ## Status
 
-Phase 0 (setup), Phase 1 (synthetic data), and Phase 2 (reconciliation
-engine) complete. Match rate on the seed-42 batch: 90% (48 rule-matched +
-6 LLM-reasoned), validated 66/66 correct against `ground_truth.csv`.
+Phase 0 (setup) through Phase 3 (audit trail) complete. Match rate on the
+seed-42 batch: 90% (48 rule-matched + 6 LLM-reasoned), validated 66/66
+correct against `ground_truth.csv`.
 
 ## Running locally
 
@@ -29,10 +29,22 @@ cd backend
 source .venv/bin/activate
 python3 reconcile.py --settlement ../data/settlement.csv --bank ../data/bank_statement.csv
 ```
-Writes `matches.csv`, `exceptions.csv`, and `audit_log.jsonl` to
-`data/output/`. Add `--no-llm` to run rules only (fast, no network calls).
-Model defaults to `gpt-oss:20b-cloud`, override with `--model` or the
-`OLLAMA_MODEL` env var.
+Writes `matches.csv`, `exceptions.csv`, and `audit.db` (SQLite audit trail)
+to `data/output/`. Add `--no-llm` to run rules only (fast, no network
+calls). Model defaults to `gpt-oss:20b-cloud`, override with `--model` or
+the `OLLAMA_MODEL` env var. Each run is recorded separately in `audit.db`
+under its own `run_id`, so history accumulates across runs.
+
+**Audit trail queries**
+```
+cd backend
+python3 audit.py --db ../data/output/audit.db trace <settlement_id_or_txn_id>
+python3 audit.py --db ../data/output/audit.db runs
+python3 audit.py --db ../data/output/audit.db matches      # latest run
+python3 audit.py --db ../data/output/audit.db exceptions   # latest run
+```
+`trace` returns the decision (matched/exception, confidence, reason) plus
+the exact source settlement/bank row(s) it was based on.
 
 **Backend**
 ```

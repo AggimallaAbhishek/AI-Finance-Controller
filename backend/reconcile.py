@@ -18,7 +18,9 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+from uuid import uuid4
 
+import audit
 from llm_matcher import get_llm_verdict, DEFAULT_MODEL
 
 DATE_TOLERANCE_DAYS = 2
@@ -302,24 +304,21 @@ def write_csv(path, rows, fieldnames):
         writer.writerows(rows)
 
 
-def write_audit_log(path, entries):
-    with open(path, "w") as f:
-        for entry in entries:
-            f.write(json.dumps(entry) + "\n")
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--settlement", type=Path, default=Path("../data/settlement.csv"))
     parser.add_argument("--bank", type=Path, default=Path("../data/bank_statement.csv"))
     parser.add_argument("--outdir", type=Path, default=None,
                          help="default: same directory as --settlement, in an output/ subfolder")
+    parser.add_argument("--db", type=Path, default=None,
+                         help="audit DB path (default: <outdir>/audit.db)")
     parser.add_argument("--no-llm", action="store_true", help="skip the LLM tier (rules only)")
     parser.add_argument("--model", default=None, help=f"Ollama model (default: {DEFAULT_MODEL})")
     args = parser.parse_args()
 
     outdir = args.outdir or (args.settlement.parent / "output")
     outdir.mkdir(parents=True, exist_ok=True)
+    db_path = args.db or (outdir / "audit.db")
 
     settlements = load_settlements(args.settlement)
     bank_entries = load_bank_entries(args.bank)
@@ -331,12 +330,22 @@ def main():
     fieldnames = ["match_status", "settlement_ref", "bank_ref", "confidence", "reason"]
     write_csv(outdir / "matches.csv", matches, fieldnames)
     write_csv(outdir / "exceptions.csv", exceptions, fieldnames)
-    write_audit_log(outdir / "audit_log.jsonl", audit_entries)
+
+    model_used = None if args.no_llm else (args.model or DEFAULT_MODEL)
+    run_id = f"{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{uuid4().hex[:6]}"
+    conn = audit.connect(db_path)
+    audit.save_run(conn, run_id, datetime.now(timezone.utc).isoformat(),
+                    args.settlement, args.bank, model_used, stats)
+    audit.save_settlements(conn, run_id, settlements)
+    audit.save_bank_entries(conn, run_id, bank_entries)
+    audit.save_audit_entries(conn, run_id, audit_entries)
+    conn.close()
 
     print(json.dumps(stats, indent=2))
-    print(f"\nwrote {outdir / 'matches.csv'}")
+    print(f"\nrun_id: {run_id}")
+    print(f"wrote {outdir / 'matches.csv'}")
     print(f"wrote {outdir / 'exceptions.csv'}")
-    print(f"wrote {outdir / 'audit_log.jsonl'}")
+    print(f"wrote {db_path} (audit trail — query with: python3 audit.py --db {db_path} trace <record_id>)")
 
 
 if __name__ == "__main__":
