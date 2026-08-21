@@ -100,6 +100,19 @@ def test_resolved_bank_exception_excluded_from_over_amount_listing(conn, seeded)
     assert not any(h["txn_id"] == "BTXN1" for h in after)
 
 
+def test_resolve_rejects_empty_note(conn, seeded):
+    # An unexplained human decision defeats the entire point of this
+    # feature — the note must be enforced at the seam that matters, not
+    # only in the UI (a direct API call could otherwise bypass it).
+    with pytest.raises(ValueError):
+        audit.resolve_exception(conn, seeded, "STL1", "no_match", "")
+
+
+def test_resolve_rejects_whitespace_only_note(conn, seeded):
+    with pytest.raises(ValueError):
+        audit.resolve_exception(conn, seeded, "STL1", "no_match", "   ")
+
+
 def test_resolve_rejects_unknown_record(conn, seeded):
     with pytest.raises(ValueError):
         audit.resolve_exception(conn, seeded, "STL_NOPE", "no_match", "note")

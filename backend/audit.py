@@ -267,52 +267,67 @@ def resolve_exception(conn, run_id, record_id, resolution, note, matched_record_
     Raises ValueError for any invalid resolution attempt — unknown
     record, a record that isn't currently an exception, an unknown or
     already-resolved counterpart, or linking two records on the same side.
+
+    The "is this still an exception" check and the insert happen inside a
+    single BEGIN IMMEDIATE transaction, so two near-simultaneous resolve
+    attempts for the same record (a double-click, two browser tabs) can't
+    both read "still open" before either commits — SQLite serializes them,
+    and the second sees the first's result and is correctly rejected,
+    rather than both silently succeeding and leaving two competing rows.
     """
-    current = _latest_row_for(conn, run_id, record_id)
-    if current is None:
-        raise ValueError(f"no record found for id '{record_id}' in this run")
-    if current["match_status"] != "exception":
-        raise ValueError(f"'{record_id}' is not currently an exception (status: {current['match_status']})")
+    if not note or not note.strip():
+        raise ValueError("a note explaining the resolution is required")
 
-    is_settlement = current["settlement_ref"] == record_id
-    timestamp = datetime.now(timezone.utc).isoformat()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        current = _latest_row_for(conn, run_id, record_id)
+        if current is None:
+            raise ValueError(f"no record found for id '{record_id}' in this run")
+        if current["match_status"] != "exception":
+            raise ValueError(f"'{record_id}' is not currently an exception (status: {current['match_status']})")
 
-    if resolution == "no_match":
-        entry = {
-            "timestamp": timestamp,
-            "settlement_ref": record_id if is_settlement else None,
-            "bank_ref": None if is_settlement else record_id,
-            "match_status": "exception",
-            "confidence": None,
-            "reason": note,
-            "tier": "human",
-        }
-    elif resolution == "match":
-        if not matched_record_id:
-            raise ValueError("matched_record_id is required when resolution is 'match'")
-        counterpart = _latest_row_for(conn, run_id, matched_record_id)
-        if counterpart is None:
-            raise ValueError(f"no record found for counterpart id '{matched_record_id}' in this run")
-        if counterpart["match_status"] != "exception":
-            raise ValueError(
-                f"counterpart '{matched_record_id}' is not currently an exception "
-                f"(status: {counterpart['match_status']})"
-            )
-        counterpart_is_settlement = counterpart["settlement_ref"] == matched_record_id
-        if counterpart_is_settlement == is_settlement:
-            raise ValueError("a match must link a settlement to a bank entry, not two of the same side")
+        is_settlement = current["settlement_ref"] == record_id
+        timestamp = datetime.now(timezone.utc).isoformat()
 
-        entry = {
-            "timestamp": timestamp,
-            "settlement_ref": record_id if is_settlement else matched_record_id,
-            "bank_ref": matched_record_id if is_settlement else record_id,
-            "match_status": "matched",
-            "confidence": "human-resolved",
-            "reason": note,
-            "tier": "human",
-        }
-    else:
-        raise ValueError("resolution must be 'match' or 'no_match'")
+        if resolution == "no_match":
+            entry = {
+                "timestamp": timestamp,
+                "settlement_ref": record_id if is_settlement else None,
+                "bank_ref": None if is_settlement else record_id,
+                "match_status": "exception",
+                "confidence": None,
+                "reason": note,
+                "tier": "human",
+            }
+        elif resolution == "match":
+            if not matched_record_id:
+                raise ValueError("matched_record_id is required when resolution is 'match'")
+            counterpart = _latest_row_for(conn, run_id, matched_record_id)
+            if counterpart is None:
+                raise ValueError(f"no record found for counterpart id '{matched_record_id}' in this run")
+            if counterpart["match_status"] != "exception":
+                raise ValueError(
+                    f"counterpart '{matched_record_id}' is not currently an exception "
+                    f"(status: {counterpart['match_status']})"
+                )
+            counterpart_is_settlement = counterpart["settlement_ref"] == matched_record_id
+            if counterpart_is_settlement == is_settlement:
+                raise ValueError("a match must link a settlement to a bank entry, not two of the same side")
 
-    save_audit_entries(conn, run_id, [entry])
+            entry = {
+                "timestamp": timestamp,
+                "settlement_ref": record_id if is_settlement else matched_record_id,
+                "bank_ref": matched_record_id if is_settlement else record_id,
+                "match_status": "matched",
+                "confidence": "human-resolved",
+                "reason": note,
+                "tier": "human",
+            }
+        else:
+            raise ValueError("resolution must be 'match' or 'no_match'")
+
+        save_audit_entries(conn, run_id, [entry])
+    except Exception:
+        conn.rollback()
+        raise
     return _latest_row_for(conn, run_id, record_id)
