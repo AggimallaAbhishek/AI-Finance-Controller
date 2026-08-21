@@ -120,6 +120,18 @@ def get_run(conn, run_id):
     return dict(row) if row else None
 
 
+def list_runs(conn):
+    rows = conn.execute("SELECT * FROM runs ORDER BY timestamp DESC").fetchall()
+    return [dict(r) for r in rows]
+
+
+def list_audit_log(conn, run_id):
+    rows = conn.execute(
+        "SELECT * FROM audit_log WHERE run_id = ? ORDER BY id", (run_id,)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def list_matches(conn, run_id):
     rows = conn.execute(
         "SELECT * FROM audit_log WHERE run_id = ? AND match_status = 'matched' ORDER BY id",
@@ -220,8 +232,8 @@ def main():
     if args.command == "trace":
         _print_trace(get_trace(conn, args.record_id, args.run_id))
     elif args.command == "runs":
-        for row in conn.execute("SELECT run_id, timestamp, settlement_file, model FROM runs ORDER BY timestamp DESC"):
-            print(dict(row))
+        for row in list_runs(conn):
+            print(row)
     elif args.command == "exceptions":
         run_id = args.run_id or latest_run_id(conn)
         for row in list_exceptions(conn, run_id):

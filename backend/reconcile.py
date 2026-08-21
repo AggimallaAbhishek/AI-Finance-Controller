@@ -304,6 +304,46 @@ def write_csv(path, rows, fieldnames):
         writer.writerows(rows)
 
 
+def run_and_persist(settlement_path, bank_path, outdir=None, db_path=None,
+                     use_llm=True, model=None):
+    """Load the batch, run reconciliation, write matches/exceptions.csv, and
+    persist the full audit trail to SQLite. Shared by the CLI (below) and
+    the FastAPI /reconcile route, so both go through the exact same path.
+    Returns {"run_id", "stats", "matches", "exceptions", "outdir", "db_path"}.
+    """
+    settlement_path = Path(settlement_path)
+    bank_path = Path(bank_path)
+    outdir = Path(outdir) if outdir else (settlement_path.parent / "output")
+    outdir.mkdir(parents=True, exist_ok=True)
+    db_path = Path(db_path) if db_path else (outdir / "audit.db")
+
+    settlements = load_settlements(settlement_path)
+    bank_entries = load_bank_entries(bank_path)
+
+    matches, exceptions, audit_entries, stats = run_reconciliation(
+        settlements, bank_entries, use_llm=use_llm, model=model
+    )
+
+    fieldnames = ["match_status", "settlement_ref", "bank_ref", "confidence", "reason"]
+    write_csv(outdir / "matches.csv", matches, fieldnames)
+    write_csv(outdir / "exceptions.csv", exceptions, fieldnames)
+
+    model_used = None if not use_llm else (model or DEFAULT_MODEL)
+    run_id = f"{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{uuid4().hex[:6]}"
+    conn = audit.connect(db_path)
+    audit.save_run(conn, run_id, datetime.now(timezone.utc).isoformat(),
+                    settlement_path, bank_path, model_used, stats)
+    audit.save_settlements(conn, run_id, settlements)
+    audit.save_bank_entries(conn, run_id, bank_entries)
+    audit.save_audit_entries(conn, run_id, audit_entries)
+    conn.close()
+
+    return {
+        "run_id": run_id, "stats": stats, "matches": matches, "exceptions": exceptions,
+        "outdir": outdir, "db_path": db_path,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--settlement", type=Path, default=Path("../data/settlement.csv"))
@@ -316,36 +356,17 @@ def main():
     parser.add_argument("--model", default=None, help=f"Ollama model (default: {DEFAULT_MODEL})")
     args = parser.parse_args()
 
-    outdir = args.outdir or (args.settlement.parent / "output")
-    outdir.mkdir(parents=True, exist_ok=True)
-    db_path = args.db or (outdir / "audit.db")
-
-    settlements = load_settlements(args.settlement)
-    bank_entries = load_bank_entries(args.bank)
-
-    matches, exceptions, audit_entries, stats = run_reconciliation(
-        settlements, bank_entries, use_llm=not args.no_llm, model=args.model
+    result = run_and_persist(
+        args.settlement, args.bank, outdir=args.outdir, db_path=args.db,
+        use_llm=not args.no_llm, model=args.model,
     )
 
-    fieldnames = ["match_status", "settlement_ref", "bank_ref", "confidence", "reason"]
-    write_csv(outdir / "matches.csv", matches, fieldnames)
-    write_csv(outdir / "exceptions.csv", exceptions, fieldnames)
-
-    model_used = None if args.no_llm else (args.model or DEFAULT_MODEL)
-    run_id = f"{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{uuid4().hex[:6]}"
-    conn = audit.connect(db_path)
-    audit.save_run(conn, run_id, datetime.now(timezone.utc).isoformat(),
-                    args.settlement, args.bank, model_used, stats)
-    audit.save_settlements(conn, run_id, settlements)
-    audit.save_bank_entries(conn, run_id, bank_entries)
-    audit.save_audit_entries(conn, run_id, audit_entries)
-    conn.close()
-
-    print(json.dumps(stats, indent=2))
-    print(f"\nrun_id: {run_id}")
-    print(f"wrote {outdir / 'matches.csv'}")
-    print(f"wrote {outdir / 'exceptions.csv'}")
-    print(f"wrote {db_path} (audit trail — query with: python3 audit.py --db {db_path} trace <record_id>)")
+    print(json.dumps(result["stats"], indent=2))
+    print(f"\nrun_id: {result['run_id']}")
+    print(f"wrote {result['outdir'] / 'matches.csv'}")
+    print(f"wrote {result['outdir'] / 'exceptions.csv'}")
+    print(f"wrote {result['db_path']} (audit trail — query with: "
+          f"python3 audit.py --db {result['db_path']} trace <record_id>)")
 
 
 if __name__ == "__main__":

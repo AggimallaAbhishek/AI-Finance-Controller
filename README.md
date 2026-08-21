@@ -6,7 +6,7 @@ full architecture and phase plan.
 
 ## Status
 
-Phase 0 (setup) through Phase 3 (audit trail) complete. Match rate on the
+Phase 0 (setup) through Phase 4 (backend API) complete. Match rate on the
 seed-42 batch: 90% (48 rule-matched + 6 LLM-reasoned), validated 66/66
 correct against `ground_truth.csv`.
 
@@ -52,6 +52,18 @@ cd backend
 source .venv/bin/activate
 uvicorn main:app --reload --port 8000
 ```
+Interactive API docs at http://localhost:8000/docs. Endpoints:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | liveness check |
+| `POST /reconcile` | run the engine (body: `settlement_path`, `bank_path`, `use_llm`, `model` — all optional) |
+| `GET /runs` | list all reconciliation runs |
+| `GET /matches` | matched records for a run (`?run_id=`, default: latest) |
+| `GET /exceptions` | exception records for a run |
+| `GET /audit` | full audit log for a run |
+| `GET /audit/{record_id}` | trace a settlement_id/txn_id to its decision + source rows |
+| `POST /qa` | ask a question (body: `question`, `run_id` optional) — currently answers match rate, exception/match counts, and unmatched-bank-entries-over-amount; free-form Q&A lands in Phase 5 |
 
 **Frontend**
 ```
