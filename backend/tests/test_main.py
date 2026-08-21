@@ -100,6 +100,70 @@ def test_matches_without_any_run_404s(client):
     assert resp.status_code == 404
 
 
+@pytest.fixture
+def two_open_exceptions(client):
+    """A settlement-side and a bank-side exception, unrelated to each
+    other — enough to exercise a resolve-to-match across both sides."""
+    _, db_path = client
+    conn = audit.connect(db_path)
+    run_id = "run1"
+    audit.save_run(conn, run_id, datetime.now(timezone.utc).isoformat(),
+                    "s.csv", "b.csv", None, {})
+    audit.save_settlements(conn, run_id, [Settlement("STL1", "RZP1", Decimal("100.00"), date(2026, 7, 1), "settled")])
+    audit.save_bank_entries(conn, run_id, [BankEntry("BTXN1", "RZPX", Decimal("100.00"), date(2026, 7, 1), "n")])
+    audit.save_audit_entries(conn, run_id, [
+        {"timestamp": "t", "settlement_ref": "STL1", "bank_ref": None,
+         "match_status": "exception", "confidence": None, "reason": "no match", "tier": "rule"},
+        {"timestamp": "t", "settlement_ref": None, "bank_ref": "BTXN1",
+         "match_status": "exception", "confidence": None, "reason": "orphan", "tier": "rule"},
+    ])
+    conn.close()
+    return run_id
+
+
+def test_resolve_to_match_via_api(client, two_open_exceptions):
+    test_client, _ = client
+    resp = test_client.post("/exceptions/STL1/resolve",
+                             json={"resolution": "match", "note": "verified manually", "matched_record_id": "BTXN1"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["match_status"] == "matched"
+    assert body["tier"] == "human"
+    assert body["confidence"] == "human-resolved"
+
+    resp = test_client.get("/exceptions")
+    assert resp.json()["count"] == 0  # both sides resolved out of the exception list
+
+    resp = test_client.get("/matches")
+    assert resp.json()["count"] == 1
+
+
+def test_resolve_no_match_via_api(client, two_open_exceptions):
+    test_client, _ = client
+    resp = test_client.post("/exceptions/STL1/resolve",
+                             json={"resolution": "no_match", "note": "confirmed genuinely unmatched"})
+    assert resp.status_code == 200
+    assert resp.json()["tier"] == "human"
+
+    resp = test_client.get("/exceptions")
+    body = resp.json()
+    assert body["count"] == 2  # still 2 open exceptions — STL1 stayed one, just re-reasoned
+    stl1 = next(e for e in body["exceptions"] if e["settlement_ref"] == "STL1")
+    assert stl1["reason"] == "confirmed genuinely unmatched"
+
+
+def test_resolve_invalid_resolution_returns_400(client, two_open_exceptions):
+    test_client, _ = client
+    resp = test_client.post("/exceptions/STL1/resolve", json={"resolution": "bogus", "note": "x"})
+    assert resp.status_code == 400
+
+
+def test_resolve_unknown_record_returns_400(client, two_open_exceptions):
+    test_client, _ = client
+    resp = test_client.post("/exceptions/NOPE/resolve", json={"resolution": "no_match", "note": "x"})
+    assert resp.status_code == 400
+
+
 def test_qa_with_no_run_gives_honest_answer_not_a_crash(client):
     test_client, _ = client
     resp = test_client.post("/qa", json={"question": "what is the match rate?"})

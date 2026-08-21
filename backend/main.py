@@ -65,6 +65,12 @@ class QARequest(BaseModel):
     model: Optional[str] = None
 
 
+class ResolveRequest(BaseModel):
+    resolution: str  # "match" or "no_match"
+    note: str
+    matched_record_id: Optional[str] = None
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "ai-finance-controller-backend"}
@@ -119,6 +125,15 @@ def get_audit_trace(record_id: str, run_id: Optional[str] = None, conn=Depends(g
     if not trace["decisions"] and not trace["settlement_record"] and not trace["bank_record"]:
         raise HTTPException(status_code=404, detail=f"No record found for id '{record_id}' in run {run_id}")
     return trace
+
+
+@app.post("/exceptions/{record_id}/resolve")
+def resolve_exception(record_id: str, req: ResolveRequest, run_id: Optional[str] = None, conn=Depends(get_conn)):
+    run_id = resolve_run_id(conn, run_id)
+    try:
+        return audit.resolve_exception(conn, run_id, record_id, req.resolution, req.note, req.matched_record_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/qa")

@@ -7,6 +7,7 @@ decision plus the exact input row(s) it was based on, not just an ID.
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA = """
@@ -141,20 +142,35 @@ def list_matches(conn, run_id):
 
 
 def list_exceptions(conn, run_id):
+    """Current exceptions only — excludes any exception row that a later
+    row (by id) has superseded for the same identity (settlement_ref or
+    bank_ref), whether superseded by a human "confirmed no-match" row or a
+    human "resolved to match" row. audit_log itself is never mutated; this
+    is a read-time view over its full, immutable history."""
     rows = conn.execute(
-        "SELECT * FROM audit_log WHERE run_id = ? AND match_status = 'exception' ORDER BY id",
+        """
+        SELECT * FROM audit_log a
+        WHERE a.run_id = ? AND a.match_status = 'exception'
+        AND NOT EXISTS (
+            SELECT 1 FROM audit_log b
+            WHERE b.run_id = a.run_id AND b.id > a.id
+            AND (
+                (a.settlement_ref IS NOT NULL AND b.settlement_ref = a.settlement_ref)
+                OR (a.bank_ref IS NOT NULL AND b.bank_ref = a.bank_ref)
+            )
+        )
+        ORDER BY a.id
+        """,
         (run_id,),
     ).fetchall()
     return [dict(r) for r in rows]
 
 
 def list_unmatched_bank_entries_over_amount(conn, run_id, min_amount):
-    """Bank-side exceptions (no settlement match) above a Rupee threshold."""
-    bank_only_refs = conn.execute(
-        "SELECT bank_ref FROM audit_log WHERE run_id = ? AND match_status = 'exception' "
-        "AND bank_ref IS NOT NULL AND settlement_ref IS NULL",
-        (run_id,),
-    ).fetchall()
+    """Bank-side exceptions (no settlement match) above a Rupee threshold.
+    Built on list_exceptions() (not a raw audit_log query) so a resolved
+    exception can never show up here as if it were still unresolved."""
+    bank_only_refs = [e for e in list_exceptions(conn, run_id) if e["bank_ref"] and not e["settlement_ref"]]
     hits = []
     for row in bank_only_refs:
         entry = conn.execute(
@@ -217,3 +233,80 @@ def get_trace(conn, record_id, run_id=None):
         "counterpart_settlement_record": dict(counterpart_settlement) if counterpart_settlement else None,
         "counterpart_bank_record": dict(counterpart_bank) if counterpart_bank else None,
     }
+
+
+def _latest_row_for(conn, run_id, record_id):
+    """Most recent audit_log row touching record_id as either identity, or
+    None if it has no decision at all in this run."""
+    row = conn.execute(
+        "SELECT * FROM audit_log WHERE run_id = ? AND (settlement_ref = ? OR bank_ref = ?) "
+        "ORDER BY id DESC LIMIT 1",
+        (run_id, record_id, record_id),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def resolve_exception(conn, run_id, record_id, resolution, note, matched_record_id=None):
+    """Human resolution of a currently-open exception. `resolution` is
+    "match" (link record_id to matched_record_id) or "no_match" (confirm
+    the exception stands, with a note explaining why).
+
+    Never mutates the original audit_log row — inserts a new one instead
+    (tier="human"), so the audit trail stays a fully immutable history:
+    the original algorithmic verdict and the human's later decision are
+    both visible via get_trace(), in order. "Current status" queries
+    (list_exceptions, list_matches) derive from the latest row per
+    identity at read time.
+
+    Raises ValueError for any invalid resolution attempt — unknown
+    record, a record that isn't currently an exception, an unknown or
+    already-resolved counterpart, or linking two records on the same side.
+    """
+    current = _latest_row_for(conn, run_id, record_id)
+    if current is None:
+        raise ValueError(f"no record found for id '{record_id}' in this run")
+    if current["match_status"] != "exception":
+        raise ValueError(f"'{record_id}' is not currently an exception (status: {current['match_status']})")
+
+    is_settlement = current["settlement_ref"] == record_id
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    if resolution == "no_match":
+        entry = {
+            "timestamp": timestamp,
+            "settlement_ref": record_id if is_settlement else None,
+            "bank_ref": None if is_settlement else record_id,
+            "match_status": "exception",
+            "confidence": None,
+            "reason": note,
+            "tier": "human",
+        }
+    elif resolution == "match":
+        if not matched_record_id:
+            raise ValueError("matched_record_id is required when resolution is 'match'")
+        counterpart = _latest_row_for(conn, run_id, matched_record_id)
+        if counterpart is None:
+            raise ValueError(f"no record found for counterpart id '{matched_record_id}' in this run")
+        if counterpart["match_status"] != "exception":
+            raise ValueError(
+                f"counterpart '{matched_record_id}' is not currently an exception "
+                f"(status: {counterpart['match_status']})"
+            )
+        counterpart_is_settlement = counterpart["settlement_ref"] == matched_record_id
+        if counterpart_is_settlement == is_settlement:
+            raise ValueError("a match must link a settlement to a bank entry, not two of the same side")
+
+        entry = {
+            "timestamp": timestamp,
+            "settlement_ref": record_id if is_settlement else matched_record_id,
+            "bank_ref": matched_record_id if is_settlement else record_id,
+            "match_status": "matched",
+            "confidence": "human-resolved",
+            "reason": note,
+            "tier": "human",
+        }
+    else:
+        raise ValueError("resolution must be 'match' or 'no_match'")
+
+    save_audit_entries(conn, run_id, [entry])
+    return _latest_row_for(conn, run_id, record_id)

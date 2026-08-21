@@ -5,8 +5,8 @@ function formatTimestamp(iso) {
   })
 }
 
-export default function StatsHeader({ run }) {
-  const { stats, run_id: runId, timestamp } = run
+export default function StatsHeader({ run, stats }) {
+  const { run_id: runId, timestamp } = run
   const matchPct = Math.round(stats.match_rate * 100)
   const totalExceptions = stats.settlement_exceptions + stats.bank_exceptions
 
@@ -40,6 +40,12 @@ export default function StatsHeader({ run }) {
             <dt>By LLM</dt>
             <dd>{stats.llm_matched}</dd>
           </div>
+          {stats.human_resolved > 0 && (
+            <div className="stat-strip__item">
+              <dt>By you</dt>
+              <dd>{stats.human_resolved}</dd>
+            </div>
+          )}
           <div className="stat-strip__item stat-strip__item--warn">
             <dt>Exceptions</dt>
             <dd>{totalExceptions}</dd>

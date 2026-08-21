@@ -17,6 +17,10 @@ export function getExceptions(runId) {
   return request(`/exceptions?run_id=${encodeURIComponent(runId)}`)
 }
 
+export function getMatches(runId) {
+  return request(`/matches?run_id=${encodeURIComponent(runId)}`)
+}
+
 export function getTrace(recordId, runId) {
   return request(`/audit/${encodeURIComponent(recordId)}?run_id=${encodeURIComponent(runId)}`)
 }
@@ -26,6 +30,20 @@ export async function askQuestion(question, runId) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question, run_id: runId }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `${res.status} ${res.statusText}`)
+  }
+  return res.json()
+}
+
+export async function resolveException(recordId, { resolution, note, matchedRecordId }, runId) {
+  const url = `${API_BASE}/exceptions/${encodeURIComponent(recordId)}/resolve?run_id=${encodeURIComponent(runId)}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resolution, note, matched_record_id: matchedRecordId || null }),
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))

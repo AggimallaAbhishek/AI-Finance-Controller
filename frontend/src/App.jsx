@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { getExceptions, getRuns } from './api'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { getExceptions, getMatches, getRuns } from './api'
 import StatsHeader from './StatsHeader'
 import ExceptionList from './ExceptionList'
 import ChatPanel from './ChatPanel'
@@ -8,8 +8,15 @@ export default function App() {
   const [status, setStatus] = useState('loading') // loading | empty | error | ready
   const [errorMessage, setErrorMessage] = useState('')
   const [run, setRun] = useState(null)
+  const [matches, setMatches] = useState([])
   const [exceptions, setExceptions] = useState([])
   const [chatOpen, setChatOpen] = useState(false)
+
+  const refresh = useCallback(async (runId) => {
+    const [{ matches }, { exceptions }] = await Promise.all([getMatches(runId), getExceptions(runId)])
+    setMatches(matches)
+    setExceptions(exceptions)
+  }, [])
 
   useEffect(() => {
     async function load() {
@@ -21,8 +28,7 @@ export default function App() {
         }
         const latest = runs[0]
         setRun(latest)
-        const { exceptions } = await getExceptions(latest.run_id)
-        setExceptions(exceptions)
+        await refresh(latest.run_id)
         setStatus('ready')
       } catch (e) {
         setErrorMessage(e.message)
@@ -30,7 +36,27 @@ export default function App() {
       }
     }
     load()
-  }, [])
+  }, [refresh])
+
+  // The run's stored stats are a snapshot from when the automated pipeline
+  // ran — a human resolution afterward doesn't rewrite that snapshot (it's
+  // an honest historical record of what the algorithm achieved on its
+  // own). The dashboard shows *current* state instead, derived live from
+  // matches/exceptions so a resolution is reflected immediately.
+  const liveStats = useMemo(() => {
+    if (!run) return null
+    const totalSettlements = run.stats.total_settlements
+    return {
+      total_settlements: totalSettlements,
+      matched: matches.length,
+      rule_matched: matches.filter((m) => m.tier === 'rule').length,
+      llm_matched: matches.filter((m) => m.tier === 'llm').length,
+      human_resolved: matches.filter((m) => m.tier === 'human').length,
+      settlement_exceptions: exceptions.filter((e) => e.settlement_ref).length,
+      bank_exceptions: exceptions.filter((e) => e.bank_ref && !e.settlement_ref).length,
+      match_rate: totalSettlements ? matches.length / totalSettlements : 0,
+    }
+  }, [run, matches, exceptions])
 
   if (status === 'loading') {
     return (
@@ -64,11 +90,15 @@ export default function App() {
 
   return (
     <div className="dashboard">
-      <StatsHeader run={run} />
+      <StatsHeader run={run} stats={liveStats} />
 
       <div className="dashboard__body">
         <main className="dashboard__main">
-          <ExceptionList exceptions={exceptions} runId={run.run_id} />
+          <ExceptionList
+            exceptions={exceptions}
+            runId={run.run_id}
+            onResolved={() => refresh(run.run_id)}
+          />
         </main>
 
         <div className={`dashboard__chat${chatOpen ? ' dashboard__chat--open' : ''}`}>
