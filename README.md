@@ -104,12 +104,13 @@ cd backend
 source .venv/bin/activate
 python3 -m pytest -v
 ```
-49 tests, no network calls (the LLM tier is tested via an injectable fake
+55 tests, no network calls (the LLM tier is tested via an injectable fake
 function, not the real Ollama API) — covers the matching engine's rule
 tiers and tie-breaking, the LLM response parser's defensive-parsing edge
 cases, retry/backoff on transient LLM failures, the audit trail's storage
-and query functions (including human-in-the-loop resolution) against a
-real temp SQLite DB, cross-thread connection safety, and the FastAPI
+and query functions (including human-in-the-loop resolution and
+concurrent-resolve safety) against a real temp SQLite DB, cross-thread
+connection safety, the Q&A agent's tool dispatch, and the FastAPI
 endpoints (including both 404 edge cases and the resolve endpoint) via
 `TestClient`.
 

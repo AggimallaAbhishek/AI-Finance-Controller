@@ -212,6 +212,59 @@ permanently on "Resolving…" with no way to recover short of a manual
 reload. Fixed by awaiting it inside the same try/catch, so a refresh
 failure surfaces in the form exactly like a resolve failure would.
 
+### v2.0 Phases 9 & 10 review — systematic bug scan
+**Issue:** Fresh re-scan of all Phase 9/10 code. Found and fixed 4 real
+issues, all reproduced before fixing:
+
+1. **Race condition in `resolve_exception`**: it read "is this currently
+   an exception" then wrote, with no transaction wrapping the two. Two
+   near-simultaneous resolves of the same record (double-click, two tabs)
+   could both pass the check and both succeed — reproduced 100% of the
+   time with a `ThreadPoolExecutor` test firing one "match" and one
+   "no_match" resolution concurrently at the same record. (First attempt
+   at a repro was itself flawed — it fired two concurrent "no_match"
+   calls, which are *designed* to both succeed since that resolution
+   keeps `match_status="exception"`; the real race only matters when the
+   two outcomes are mutually exclusive.)
+2. **`resolve_exception` accepted an empty or whitespace-only note** —
+   only the frontend's `disabled` guard prevented it, not the seam that
+   actually matters. A direct API call could create an unexplained
+   "human" decision, undermining the entire point of an audited
+   resolution.
+3. **The Q&A agent and the dashboard could report contradictory numbers
+   for the same run** — the most serious finding. `qa_agent.py`'s
+   `get_stats()` returned the run's stored `stats_json`, frozen at
+   reconcile time and never updated by a later resolution, while the
+   dashboard (Phase 10) computes stats live. Confirmed live: after
+   resolving 2 exceptions into 1 match, the dashboard correctly showed 10
+   exceptions while the Q&A agent answered "12" for the identical
+   question — a direct violation of the project's core honesty
+   principle. Compounding this, `list_matches`'s tool schema had a
+   hardcoded `confidence` enum from Phase 5 that didn't include the new
+   `"human-resolved"` value, so asking specifically about human
+   resolutions made the agent answer "the available data does not
+   indicate" — even though the data existed, just not through the tool
+   it reached for.
+**Fix:**
+1. Wrapped the check-then-write in a single `BEGIN IMMEDIATE` transaction,
+   so SQLite serializes conflicting concurrent resolves — the loser sees
+   the winner's committed result and is correctly rejected. Verified with
+   the corrected test (8/8 clean runs) and confirmed the original flawed
+   test's "failure" was actually correct behavior, not a bug.
+2. Added a non-empty check at the top of `resolve_exception`, raising
+   `ValueError` — defense in depth, not relying on the frontend alone.
+3. `get_stats()` now computes matched/exceptions/rule/llm/human counts
+   live from `list_matches()`/`list_exceptions()` (which already
+   correctly reflect resolutions), keeping only the static
+   `total_settlements`/`total_bank_entries` from the stored snapshot.
+   Added `"human-resolved"` to the `list_matches` tool schema's enum.
+   Re-ran the exact live repro that caught this after the fix: both
+   questions now answer correctly and consistently with the dashboard.
+
+All fixes covered by new tests (`test_audit_resolve_race.py`,
+`test_qa_agent.py`, plus additions to `test_audit_resolve.py`) —
+55 tests total, full suite green, live end-to-end re-verification clean.
+
 ---
 
 ## Template for new entries

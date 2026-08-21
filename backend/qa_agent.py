@@ -35,7 +35,7 @@ TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "get_stats",
-            "description": "Get summary statistics for the reconciliation run: match rate, total settlements, matched count (rule vs LLM), and exception counts.",
+            "description": "Get current summary statistics for the reconciliation run: match rate, total settlements, matched count (by rule / LLM / human resolution), and exception counts. Reflects any human resolutions made since the run finished, not just the original automated result.",
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
@@ -58,7 +58,7 @@ TOOLS_SCHEMA = [
                     "confidence": {
                         "type": "string",
                         "description": "Filter to one confidence tier",
-                        "enum": ["exact", "fuzzy-date", "fuzzy-amount", "fuzzy-date-amount", "llm-reasoned"],
+                        "enum": ["exact", "fuzzy-date", "fuzzy-amount", "fuzzy-date-amount", "llm-reasoned", "human-resolved"],
                     }
                 },
                 "required": [],
@@ -99,8 +99,33 @@ TOOLS_SCHEMA = [
 
 def _build_tool_dispatch(conn, run_id):
     def get_stats():
+        # Computed live from the current matches/exceptions, NOT the run's
+        # stored stats_json — that snapshot is frozen at reconcile time and
+        # never updated by a later human resolution. Returning it directly
+        # here previously meant the Q&A agent and the dashboard (which
+        # already computes live) could report two different, contradictory
+        # exception counts for the same run — confirmed live during a
+        # systematic-debugging pass. total_settlements/total_bank_entries
+        # come from the snapshot since those never change after the fact.
         run = audit.get_run(conn, run_id)
-        return json.loads(run["stats_json"]) if run else {"error": "run not found"}
+        if not run:
+            return {"error": "run not found"}
+        stored = json.loads(run["stats_json"])
+        matches = audit.list_matches(conn, run_id)
+        exceptions = audit.list_exceptions(conn, run_id)
+        total_settlements = stored.get("total_settlements", 0)
+        matched = len(matches)
+        return {
+            "total_settlements": total_settlements,
+            "total_bank_entries": stored.get("total_bank_entries", 0),
+            "matched": matched,
+            "rule_matched": sum(1 for m in matches if m["tier"] == "rule"),
+            "llm_matched": sum(1 for m in matches if m["tier"] == "llm"),
+            "human_resolved": sum(1 for m in matches if m["tier"] == "human"),
+            "settlement_exceptions": sum(1 for e in exceptions if e["settlement_ref"]),
+            "bank_exceptions": sum(1 for e in exceptions if e["bank_ref"] and not e["settlement_ref"]),
+            "match_rate": round(matched / total_settlements, 4) if total_settlements else 0.0,
+        }
 
     def list_exceptions():
         rows = audit.list_exceptions(conn, run_id)

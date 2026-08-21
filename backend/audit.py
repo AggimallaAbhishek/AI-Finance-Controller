@@ -68,7 +68,14 @@ def connect(db_path):
     # by one request's own logical flow at a time (create -> use -> close
     # within a single get_conn() dependency lifecycle) — never shared
     # concurrently between two different requests.
-    conn = sqlite3.connect(db_path, check_same_thread=False)
+    # isolation_level=None: full manual transaction control. Python's
+    # sqlite3 legacy mode (the default) auto-opens a transaction before
+    # DML and auto-commits before DDL/SELECT in ways that can conflict
+    # with explicitly issuing "BEGIN IMMEDIATE" ourselves (resolve_exception
+    # needs that specific locking mode to serialize concurrent resolves of
+    # the same record) — disabling the implicit mode removes that ambiguity
+    # entirely rather than fighting it.
+    conn = sqlite3.connect(db_path, check_same_thread=False, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     return conn
