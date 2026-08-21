@@ -14,6 +14,7 @@ import argparse
 import csv
 import difflib
 import json
+import os
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -23,8 +24,10 @@ from uuid import uuid4
 import audit
 from llm_matcher import get_llm_verdict, DEFAULT_MODEL
 
-DATE_TOLERANCE_DAYS = 2
-AMOUNT_TOLERANCE_RS = Decimal("10")
+# Configurable without a code change — see docs/glossary.md for what these
+# tolerances mean. Defaults match the ones the batch was designed against.
+DATE_TOLERANCE_DAYS = int(os.environ.get("RECONCILE_DATE_TOLERANCE_DAYS", "2"))
+AMOUNT_TOLERANCE_RS = Decimal(os.environ.get("RECONCILE_AMOUNT_TOLERANCE_RS", "10"))
 CANDIDATE_SCORE_FLOOR = 0.45
 MAX_CANDIDATES = 3
 
@@ -75,10 +78,15 @@ def load_bank_entries(path):
         ]
 
 
-def rule_tier(settlement, bank):
+def rule_tier(settlement, bank, date_tolerance_days=None, amount_tolerance_rs=None):
     """Return (confidence, reason) if settlement/bank match within rule
     tolerance, else None. Requires an exact reference_id match — that's what
-    makes a rule verdict trustworthy without reasoning over free text."""
+    makes a rule verdict trustworthy without reasoning over free text.
+    Tolerances default to the module-level (environment-configurable)
+    constants; pass explicit values to override per call."""
+    date_tolerance_days = DATE_TOLERANCE_DAYS if date_tolerance_days is None else date_tolerance_days
+    amount_tolerance_rs = AMOUNT_TOLERANCE_RS if amount_tolerance_rs is None else amount_tolerance_rs
+
     if settlement.reference_id != bank.reference_id:
         return None
     date_diff = abs((settlement.date - bank.date).days)
@@ -86,17 +94,17 @@ def rule_tier(settlement, bank):
 
     if date_diff == 0 and amount_diff == 0:
         return "exact", "reference_id, amount, and date all matched exactly"
-    if amount_diff == 0 and date_diff <= DATE_TOLERANCE_DAYS:
+    if amount_diff == 0 and date_diff <= date_tolerance_days:
         return "fuzzy-date", (
             f"reference_id and amount matched exactly; date differs by "
-            f"{date_diff} day(s), within {DATE_TOLERANCE_DAYS}-day tolerance"
+            f"{date_diff} day(s), within {date_tolerance_days}-day tolerance"
         )
-    if date_diff == 0 and amount_diff <= AMOUNT_TOLERANCE_RS:
+    if date_diff == 0 and amount_diff <= amount_tolerance_rs:
         return "fuzzy-amount", (
             f"reference_id and date matched exactly; amount differs by "
-            f"Rs {amount_diff}, within Rs {AMOUNT_TOLERANCE_RS} tolerance"
+            f"Rs {amount_diff}, within Rs {amount_tolerance_rs} tolerance"
         )
-    if date_diff <= DATE_TOLERANCE_DAYS and amount_diff <= AMOUNT_TOLERANCE_RS:
+    if date_diff <= date_tolerance_days and amount_diff <= amount_tolerance_rs:
         return "fuzzy-date-amount", (
             f"reference_id matched exactly; date differs by {date_diff} day(s) "
             f"and amount by Rs {amount_diff}, both within tolerance"

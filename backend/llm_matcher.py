@@ -8,12 +8,17 @@ prompt and parse defensively.
 """
 
 import json
+import logging
 import os
-import re
+import time
 
 import ollama
 
+logger = logging.getLogger("llm_matcher")
+
 DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "gpt-oss:20b-cloud")
+MAX_ATTEMPTS = 3
+BACKOFF_BASE_SECONDS = 0.5
 
 PROMPT_TEMPLATE = """You are reconciling a Razorpay settlement record against candidate bank statement entries. Bank exports sometimes mangle reference_id (case changes, truncation, transposed digits) and post a few days after the settlement date, so use amount, date proximity, reference_id similarity, and narration together — not any single field alone.
 
@@ -38,38 +43,14 @@ def _format_candidates(candidates):
     return "\n".join(lines)
 
 
-def get_llm_verdict(settlement, candidates, model=None):
-    """Ask Ollama to pick a matching candidate (or none) for a settlement
-    record. Returns {"match_found": bool, "matched_bank_txn_id": str|None,
-    "reasoning": str}. Never raises — any failure (network, parse, or an
-    out-of-range answer) comes back as a safe "no match" with the failure
-    reason, so a bad LLM call degrades to an honest exception, not a
-    fabricated match.
+def _parse_verdict(raw, candidates):
+    """Parse the LLM's raw text response into a verdict dict. Pure function,
+    no network — the seam that carries all the defensive parsing logic
+    (see docs/BUILD-CHALLENGES.md for the bug classes this guards against:
+    greedy-regex JSON extraction, stringly-typed booleans, out-of-range IDs).
+    Never raises — any parse failure or invalid answer becomes a safe
+    "no match" with the reason, never a fabricated match.
     """
-    model = model or DEFAULT_MODEL
-    prompt = PROMPT_TEMPLATE.format(
-        settlement_id=settlement["settlement_id"],
-        reference_id=settlement["reference_id"],
-        amount=settlement["amount"],
-        date=settlement["date"],
-        status=settlement["status"],
-        candidates_block=_format_candidates(candidates),
-    )
-
-    try:
-        resp = ollama.chat(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            options={"temperature": 0},
-        )
-        raw = resp["message"]["content"]
-    except Exception as e:
-        return {
-            "match_found": False,
-            "matched_bank_txn_id": None,
-            "reasoning": f"LLM call failed: {e}",
-        }
-
     start = raw.find("{")
     if start == -1:
         return {
@@ -106,3 +87,59 @@ def get_llm_verdict(settlement, candidates, model=None):
         }
 
     return {"match_found": False, "matched_bank_txn_id": None, "reasoning": reasoning}
+
+
+def get_llm_verdict(settlement, candidates, model=None, sleep_fn=time.sleep):
+    """Ask Ollama to pick a matching candidate (or none) for a settlement
+    record. Returns {"match_found": bool, "matched_bank_txn_id": str|None,
+    "reasoning": str}. Never raises — any failure (network or parse) comes
+    back as a safe "no match" with the failure reason, so a bad LLM call
+    degrades to an honest exception, not a fabricated match.
+
+    Retries up to MAX_ATTEMPTS times with exponential backoff on a network/
+    call failure (a transient blip shouldn't cost a real match); a bad or
+    unparseable response is not retried, since re-sending the same prompt
+    to a temperature=0 model won't fix a parse failure.
+    """
+    model = model or DEFAULT_MODEL
+    prompt = PROMPT_TEMPLATE.format(
+        settlement_id=settlement["settlement_id"],
+        reference_id=settlement["reference_id"],
+        amount=settlement["amount"],
+        date=settlement["date"],
+        status=settlement["status"],
+        candidates_block=_format_candidates(candidates),
+    )
+
+    last_error = None
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            resp = ollama.chat(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                options={"temperature": 0},
+            )
+            raw = resp["message"]["content"]
+        except Exception as e:
+            last_error = e
+            settlement_id = settlement.get("settlement_id", "?")
+            if attempt < MAX_ATTEMPTS - 1:
+                delay = BACKOFF_BASE_SECONDS * (2 ** attempt)
+                logger.warning(
+                    "LLM call failed for %s on attempt %d/%d (%s), retrying in %.1fs",
+                    settlement_id, attempt + 1, MAX_ATTEMPTS, e, delay,
+                )
+                sleep_fn(delay)
+            else:
+                logger.warning(
+                    "LLM call failed for %s on attempt %d/%d (%s), gave up",
+                    settlement_id, attempt + 1, MAX_ATTEMPTS, e,
+                )
+            continue
+        return _parse_verdict(raw, candidates)
+
+    return {
+        "match_found": False,
+        "matched_bank_txn_id": None,
+        "reasoning": f"LLM call failed after {MAX_ATTEMPTS} attempts: {last_error}",
+    }
