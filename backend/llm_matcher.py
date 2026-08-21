@@ -70,8 +70,8 @@ def get_llm_verdict(settlement, candidates, model=None):
             "reasoning": f"LLM call failed: {e}",
         }
 
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
-    if not match:
+    start = raw.find("{")
+    if start == -1:
         return {
             "match_found": False,
             "matched_bank_txn_id": None,
@@ -79,7 +79,10 @@ def get_llm_verdict(settlement, candidates, model=None):
         }
 
     try:
-        verdict = json.loads(match.group(0))
+        # raw_decode parses exactly one JSON value starting at `start` and
+        # ignores anything after it — unlike a greedy regex, it isn't thrown
+        # off by trailing commentary or stray braces after the real object.
+        verdict, _ = json.JSONDecoder().raw_decode(raw, start)
     except json.JSONDecodeError:
         return {
             "match_found": False,
@@ -90,11 +93,12 @@ def get_llm_verdict(settlement, candidates, model=None):
     candidate_ids = {c["txn_id"] for c in candidates}
     txn_id = verdict.get("matched_bank_txn_id")
     reasoning = verdict.get("reasoning", "")
+    match_found = verdict.get("match_found") is True
 
-    if verdict.get("match_found") and txn_id in candidate_ids:
+    if match_found and txn_id in candidate_ids:
         return {"match_found": True, "matched_bank_txn_id": txn_id, "reasoning": reasoning}
 
-    if verdict.get("match_found") and txn_id not in candidate_ids:
+    if match_found and txn_id not in candidate_ids:
         return {
             "match_found": False,
             "matched_bank_txn_id": None,

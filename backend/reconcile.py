@@ -105,9 +105,10 @@ def rule_tier(settlement, bank):
 
 
 def candidate_score(settlement, bank):
-    """Similarity score in [0, 1] used to shortlist LLM candidates for a
-    settlement the rules couldn't resolve. Not a matching decision — just
-    ranks which unclaimed bank rows are worth showing the LLM."""
+    """Similarity score (0 to 1.2, with the narration bonus) used to
+    shortlist LLM candidates for a settlement the rules couldn't resolve.
+    Not a matching decision — just ranks which unclaimed bank rows are
+    worth showing the LLM."""
     ref_sim = difflib.SequenceMatcher(
         None, settlement.reference_id.lower(), bank.reference_id.lower()
     ).ratio()
@@ -142,19 +143,24 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
 
     # Tier 1-3: rules
     for s in settlements_sorted:
-        best = None
+        best = None  # (b, confidence, reason, amount_diff, date_diff)
         for b in bank_entries:
             if b.txn_id in claimed:
                 continue
             verdict = rule_tier(s, b)
-            if verdict:
-                confidence, reason = verdict
-                if best is None or confidence == "exact":
-                    best = (b, confidence, reason)
-                if confidence == "exact":
-                    break
+            if verdict is None:
+                continue
+            confidence, reason = verdict
+            date_diff = abs((s.date - b.date).days)
+            amount_diff = abs(s.amount - b.amount)
+            # Rank by amount closeness first, then date closeness: two
+            # unrelated transactions rarely share both a reference_id and an
+            # exact amount by coincidence, while date drift is routine
+            # operational noise — so amount is the stronger tie-breaker.
+            if best is None or (amount_diff, date_diff) < (best[3], best[4]):
+                best = (b, confidence, reason, amount_diff, date_diff)
         if best:
-            b, confidence, reason = best
+            b, confidence, reason, _, _ = best
             claimed.add(b.txn_id)
             matches.append({
                 "match_status": "matched",

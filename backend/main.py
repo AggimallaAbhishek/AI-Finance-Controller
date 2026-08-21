@@ -32,7 +32,11 @@ def get_conn():
 
 
 def resolve_run_id(conn, run_id):
-    run_id = run_id or audit.latest_run_id(conn)
+    if run_id:
+        if not audit.get_run(conn, run_id):
+            raise HTTPException(status_code=404, detail=f"No such run_id: '{run_id}'")
+        return run_id
+    run_id = audit.latest_run_id(conn)
     if not run_id:
         raise HTTPException(status_code=404, detail="No reconciliation run found. Call POST /reconcile first.")
     return run_id
