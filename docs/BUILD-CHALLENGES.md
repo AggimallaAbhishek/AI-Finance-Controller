@@ -177,6 +177,41 @@ requests from, sidestepping the generator-lifetime issue altogether rather
 than working around it (e.g. by holding a reference and remembering to
 call `.close()` in the right order).
 
+### v2.0 Phase 10 — SQLite connections broke under concurrent requests
+**Issue:** Live-testing the new Resolve UI, the dashboard intermittently
+failed to refresh after a successful resolution — "Failed to fetch" in
+the browser. Isolated it by testing concurrent `curl` requests directly
+against `/matches` and `/exceptions` (bypassing the browser entirely):
+reproducible 500s starting from the second concurrent round. The backend
+log showed the real cause: `sqlite3.ProgrammingError: SQLite objects
+created in a thread can only be used in that same thread.` FastAPI runs
+sync route handlers and generator dependencies via a thread pool, and
+doesn't guarantee `get_conn()`'s `yield` and the route handler's body run
+on the same OS thread — under concurrent load, `audit.connect()`'s
+connection could be created on one worker thread and used on another,
+which plain `sqlite3` rejects by default. This bug has existed since
+`Depends(get_conn)` was introduced in Phase 4; it never surfaced because
+every prior test and manual check was sequential — Phase 10 is the first
+thing in this project to fire concurrent requests (the dashboard's
+`refresh()` fetches `/matches` and `/exceptions` together via
+`Promise.all`).
+**Fix:** `sqlite3.connect(db_path, check_same_thread=False)`. Safe here
+specifically because each connection is only ever used within one
+request's own create-use-close lifecycle, never shared between two
+concurrent requests. Reproduced first with a targeted pytest test
+(create a connection on the main thread, use it from a
+`ThreadPoolExecutor` thread, assert it doesn't raise) before fixing, then
+re-ran the exact concurrent-curl repro against the live server to confirm
+— 5 rounds clean, versus failing from round 2 onward before the fix.
+
+Separately, while investigating: the resolve form called
+`onResolved()` (the dashboard refresh) without awaiting it, so if the
+refresh itself ever failed independently of a successful resolve, the
+error became an unhandled promise rejection the form never saw — stuck
+permanently on "Resolving…" with no way to recover short of a manual
+reload. Fixed by awaiting it inside the same try/catch, so a refresh
+failure surfaces in the form exactly like a resolve failure would.
+
 ---
 
 ## Template for new entries

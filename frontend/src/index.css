@@ -10,6 +10,8 @@
   --accent-border: rgba(170, 59, 255, 0.5);
   --warn: #b45309;
   --warn-bg: rgba(180, 83, 9, 0.1);
+  --success: #15803d;
+  --success-bg: rgba(21, 128, 61, 0.1);
   --danger-text: #b91c1c;
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -40,6 +42,8 @@
     --accent-border: rgba(192, 132, 252, 0.5);
     --warn: #fbbf24;
     --warn-bg: rgba(251, 191, 36, 0.12);
+    --success: #4ade80;
+    --success-bg: rgba(74, 222, 128, 0.12);
     --danger-text: #f87171;
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
@@ -341,6 +345,99 @@ button {
   padding: 24px;
   text-align: center;
   color: var(--text);
+}
+
+.reviewed-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.resolve-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.resolve-actions button {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-h);
+}
+
+.resolve-actions button:hover {
+  border-color: var(--accent-border);
+}
+
+.resolve-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.resolve-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.resolve-form__field input,
+.resolve-form__field textarea {
+  font: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  resize: vertical;
+}
+
+.resolve-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.resolve-form__actions button[type='button'] {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.resolve-form__actions button[type='submit'] {
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.resolve-form__actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ---------- chat panel ---------- */

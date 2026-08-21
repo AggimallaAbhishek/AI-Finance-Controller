@@ -1,7 +1,91 @@
 import { useState } from 'react'
-import { getTrace } from './api'
+import { getTrace, resolveException } from './api'
 
-function ExceptionRow({ exception, runId }) {
+function ResolveActions({ recordId, runId, onResolved }) {
+  const [mode, setMode] = useState(null) // null | 'no_match' | 'match'
+  const [note, setNote] = useState('')
+  const [counterpart, setCounterpart] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function submit(e) {
+    e.preventDefault()
+    setSubmitting(true)
+    setError(null)
+    try {
+      await resolveException(
+        recordId,
+        { resolution: mode, note, matchedRecordId: mode === 'match' ? counterpart.trim() : undefined },
+        runId,
+      )
+      // Awaited deliberately: if the resolve itself succeeds but this
+      // refresh fails, the error must still surface here — otherwise the
+      // form is stuck showing "Resolving…" forever with no way to tell
+      // the user, since the row would normally unmount once the parent's
+      // exceptions list updates (every resolution creates a new row id,
+      // so a successful refresh always remounts or removes this row).
+      await onResolved()
+    } catch (err) {
+      setError(err.message)
+      setSubmitting(false)
+    }
+  }
+
+  if (mode === null) {
+    return (
+      <div className="resolve-actions">
+        <button type="button" onClick={() => setMode('no_match')}>
+          Confirm no match
+        </button>
+        <button type="button" onClick={() => setMode('match')}>
+          Link to a record
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <form className="resolve-form" onSubmit={submit}>
+      {mode === 'match' && (
+        <label className="resolve-form__field">
+          Counterpart record ID
+          <input
+            value={counterpart}
+            onChange={(e) => setCounterpart(e.target.value)}
+            placeholder="e.g. BTXN1234567890"
+            required
+            disabled={submitting}
+          />
+        </label>
+      )}
+      <label className="resolve-form__field">
+        Note (why?)
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={mode === 'match' ? 'e.g. confirmed via reference lookup with ops' : 'e.g. confirmed with finance, settlement was voided'}
+          required
+          disabled={submitting}
+          rows={2}
+        />
+      </label>
+      {error && <p className="error-text">Couldn’t resolve: {error}</p>}
+      <div className="resolve-form__actions">
+        <button type="button" onClick={() => setMode(null)} disabled={submitting}>
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={submitting || !note.trim() || (mode === 'match' && !counterpart.trim())}
+        >
+          {submitting ? 'Resolving…' : 'Submit'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function ExceptionRow({ exception, runId, onResolved }) {
   const [expanded, setExpanded] = useState(false)
   const [trace, setTrace] = useState(null)
   const [error, setError] = useState(null)
@@ -9,6 +93,7 @@ function ExceptionRow({ exception, runId }) {
 
   const side = exception.settlement_ref ? 'settlement' : 'bank'
   const recordId = exception.settlement_ref || exception.bank_ref
+  const reviewed = exception.tier === 'human'
 
   async function toggle() {
     const next = !expanded
@@ -41,6 +126,7 @@ function ExceptionRow({ exception, runId }) {
         </span>
         <code className="exception-row__id">{recordId}</code>
         <span className="exception-row__reason">{exception.reason}</span>
+        {reviewed && <span className="reviewed-badge">Reviewed</span>}
         <span className="exception-row__chevron" aria-hidden="true">
           {expanded ? '−' : '+'}
         </span>
@@ -77,13 +163,14 @@ function ExceptionRow({ exception, runId }) {
               )}
             </dl>
           )}
+          <ResolveActions recordId={recordId} runId={runId} onResolved={onResolved} />
         </div>
       )}
     </li>
   )
 }
 
-export default function ExceptionList({ exceptions, runId }) {
+export default function ExceptionList({ exceptions, runId, onResolved }) {
   if (exceptions.length === 0) {
     return (
       <section className="exception-list" aria-label="Exceptions">
@@ -100,7 +187,7 @@ export default function ExceptionList({ exceptions, runId }) {
       </h2>
       <ul className="exception-list__items">
         {exceptions.map((e) => (
-          <ExceptionRow key={e.id} exception={e} runId={runId} />
+          <ExceptionRow key={e.id} exception={e} runId={runId} onResolved={onResolved} />
         ))}
       </ul>
     </section>

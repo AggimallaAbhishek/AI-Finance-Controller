@@ -62,7 +62,13 @@ CREATE INDEX IF NOT EXISTS idx_audit_run_id ON audit_log(run_id);
 
 def connect(db_path):
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    # check_same_thread=False: FastAPI's threadpool doesn't guarantee a
+    # generator dependency's yield and the route handler's body run on the
+    # same OS thread. Safe here because each connection is only ever used
+    # by one request's own logical flow at a time (create -> use -> close
+    # within a single get_conn() dependency lifecycle) — never shared
+    # concurrently between two different requests.
+    conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     return conn

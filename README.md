@@ -1,8 +1,9 @@
 # AI Finance Controller
 
 **Razorpay Individual Hackathon — Track 04, AI Finance Controller**
-**Status: v1.0 complete** (Phases 0–8 of `project_plan.md`) — see
-`project_plan_v2.md` for what's next.
+**Status: v1.0 complete** (Phases 0–8 of `project_plan.md`); v2.0 in
+progress — Phases 9 (test suite & backend hardening) and 10
+(human-in-the-loop resolution) done, see `project_plan_v2.md`.
 
 An agent that closes one finance-ops loop: reconciling Razorpay settlement
 data against a bank statement across a 50+ record batch, and letting a
@@ -103,12 +104,14 @@ cd backend
 source .venv/bin/activate
 python3 -m pytest -v
 ```
-35 tests, no network calls (the LLM tier is tested via an injectable fake
+49 tests, no network calls (the LLM tier is tested via an injectable fake
 function, not the real Ollama API) — covers the matching engine's rule
 tiers and tie-breaking, the LLM response parser's defensive-parsing edge
 cases, retry/backoff on transient LLM failures, the audit trail's storage
-and query functions against a real temp SQLite DB, and the FastAPI
-endpoints (including both 404 edge cases) via `TestClient`.
+and query functions (including human-in-the-loop resolution) against a
+real temp SQLite DB, cross-thread connection safety, and the FastAPI
+endpoints (including both 404 edge cases and the resolve endpoint) via
+`TestClient`.
 
 ## Running locally
 
@@ -146,6 +149,7 @@ Interactive API docs at http://localhost:8000/docs. Endpoints:
 | `GET /audit` | full audit log for a run |
 | `GET /audit/{record_id}` | trace a settlement_id/txn_id to its decision + source rows |
 | `POST /qa` | ask a free-form question (body: `question`, `run_id` and `model` optional) |
+| `POST /exceptions/{record_id}/resolve` | human-resolve an exception (body: `resolution` — `"match"` with `matched_record_id`, or `"no_match"` — and `note`) |
 
 `POST /reconcile` accepts `settlement_path`/`bank_path` overrides, so the
 same live pipeline can be pointed at any batch — this is how the held-out
@@ -173,6 +177,16 @@ lazy-load its full source-record detail), and a chat panel wired to `/qa`
 with Markdown-rendered answers and source-record citations. Responsive —
 the chat becomes a slide-over panel below ~900px. Set `VITE_API_BASE` to
 point at a non-default backend URL.
+
+**Human-in-the-loop**: an expanded exception row has two resolution
+actions — "Confirm no match" (note only) or "Link to a record" (a
+counterpart record ID + note). Resolving never mutates the original
+decision — it inserts a new `tier: human` audit_log row, so
+`GET /audit/{id}` shows the full history (the original algorithmic verdict
+*and* the human's later decision, in order). The header's stats are
+derived live from the current matches/exceptions, not the run's stored
+snapshot, so a resolution is reflected immediately — including a "By you"
+figure once at least one exists.
 
 **Without the API running** — run the engine and inspect results directly:
 ```
