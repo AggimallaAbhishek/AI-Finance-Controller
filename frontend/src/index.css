@@ -350,7 +350,9 @@ button {
   flex-direction: column;
   border: 1px solid var(--border);
   border-radius: 8px;
-  height: calc(100svh - 24px - 24px - 90px);
+  /* Sized to fit below the (non-sticky) stats header in its natural,
+     unscrolled position — measured actual header height, not a guess. */
+  height: calc(100svh - 24px - 24px - 112px);
   position: sticky;
   top: 24px;
 }
