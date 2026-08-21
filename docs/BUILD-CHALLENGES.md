@@ -134,6 +134,29 @@ screen — confirmed via screenshot on a narrow viewport.
 `top: auto`) with `padding-bottom` reserving space for the toggle button,
 so the input row always sits above it instead of underneath.
 
+### Phase 6 review — sticky chat panel's height guess didn't match reality
+**Issue:** Systematic re-scan of the frontend, using `get_page_text`
+(DOM-based) instead of screenshots after this remote browser environment's
+viewport turned out to drift unpredictably between calls (confirmed via
+`window.innerWidth`/`innerHeight` — the same unchanged coordinates and
+resize requests produced different effective sizes across calls, a tooling
+instability, not an app issue — one apparent "row won't expand" failure
+was a false alarm caused by this, disproven by re-testing with `find` +
+`get_page_text` which are coordinate-independent).
+
+The one real finding: `.chat-panel`'s desktop height used
+`calc(100svh - 24px - 24px - 90px)`, guessing the stats header's height at
+90px so the sticky sidebar wouldn't overflow the viewport in its natural
+(pre-scroll) position. Measured via `getBoundingClientRect()`: the actual
+header height was 104.9px — a 15px underestimate. It hadn't visibly broken
+in testing (there was enough slack at the viewport sizes tested), but it
+was a real, evidence-based inaccuracy, not a hypothetical one.
+**Fix:** Updated the subtracted constant to the measured value (112px,
+with a small safety margin) rather than tweaking it blindly. Verified via
+`getBoundingClientRect()` at two different actual viewport sizes
+(657px and 813px tall) that the panel's bottom edge stays within the
+viewport with real margin to spare in both.
+
 ---
 
 ## Template for new entries
