@@ -7,6 +7,9 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 
+# Regenerated pipeline output (run reconcile.py to recreate)
+data/output/
+
 # Env
 .env
 *.env.local

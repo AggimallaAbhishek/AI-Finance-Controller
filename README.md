@@ -6,7 +6,9 @@ full architecture and phase plan.
 
 ## Status
 
-Phase 0 (setup) and Phase 1 (synthetic data) complete.
+Phase 0 (setup), Phase 1 (synthetic data), and Phase 2 (reconciliation
+engine) complete. Match rate on the seed-42 batch: 90% (48 rule-matched +
+6 LLM-reasoned), validated 66/66 correct against `ground_truth.csv`.
 
 ## Running locally
 
@@ -20,6 +22,17 @@ Regenerate with a different `--seed` for a fresh, untuned-against batch
 the intended pairing + category per record, for validating the
 reconciliation engine's output. It is dev-only and is never read by the
 engine itself.
+
+**Reconciliation engine**
+```
+cd backend
+source .venv/bin/activate
+python3 reconcile.py --settlement ../data/settlement.csv --bank ../data/bank_statement.csv
+```
+Writes `matches.csv`, `exceptions.csv`, and `audit_log.jsonl` to
+`data/output/`. Add `--no-llm` to run rules only (fast, no network calls).
+Model defaults to `gpt-oss:20b-cloud`, override with `--model` or the
+`OLLAMA_MODEL` env var.
 
 **Backend**
 ```

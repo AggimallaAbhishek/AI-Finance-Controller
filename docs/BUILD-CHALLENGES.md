@@ -18,6 +18,19 @@ the server hadn't finished binding to the port yet.
 **Fix:** Added a short sleep before the health check, then confirmed via
 the log output that the server had actually started before retrying.
 
+### Phase 2 — Ollama's `format` (structured-output) schema isn't enforced for cloud models
+**Issue:** Passed a JSON schema via `format=` to `ollama.chat(model="gpt-oss:20b-cloud", ...)`
+expecting constrained JSON output (this works for local models via grammar-based
+decoding). The cloud-routed model ignored it entirely and returned a free-text
+markdown table instead.
+**Fix:** Dropped `format=`. Instead, the prompt explicitly instructs "respond
+with ONLY a single JSON object, no markdown, no commentary" and the client
+extracts the first `{...}` block via regex before `json.loads`. If parsing
+still fails (or the returned `matched_bank_txn_id` isn't one of the actual
+candidates), the verdict is treated as invalid and the record is escalated to
+an exception rather than guessed at — never trust an unparseable or
+out-of-range LLM response into a "match".
+
 ---
 
 ## Template for new entries
