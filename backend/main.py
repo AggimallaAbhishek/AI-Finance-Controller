@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -28,7 +28,11 @@ app.add_middleware(
 
 
 def get_conn():
-    return audit.connect(DEFAULT_DB)
+    conn = audit.connect(DEFAULT_DB)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def resolve_run_id(conn, run_id):
@@ -80,67 +84,43 @@ def run_reconcile(req: ReconcileRequest = ReconcileRequest()):
 
 
 @app.get("/runs")
-def get_runs():
-    conn = get_conn()
-    try:
-        runs = audit.list_runs(conn)
-        for r in runs:
-            r["stats"] = json.loads(r.pop("stats_json"))
-        return {"count": len(runs), "runs": runs}
-    finally:
-        conn.close()
+def get_runs(conn=Depends(get_conn)):
+    runs = audit.list_runs(conn)
+    for r in runs:
+        r["stats"] = json.loads(r.pop("stats_json"))
+    return {"count": len(runs), "runs": runs}
 
 
 @app.get("/matches")
-def get_matches(run_id: Optional[str] = None):
-    conn = get_conn()
-    try:
-        run_id = resolve_run_id(conn, run_id)
-        matches = [_with_parsed_candidates(m) for m in audit.list_matches(conn, run_id)]
-        return {"run_id": run_id, "count": len(matches), "matches": matches}
-    finally:
-        conn.close()
+def get_matches(run_id: Optional[str] = None, conn=Depends(get_conn)):
+    run_id = resolve_run_id(conn, run_id)
+    matches = [_with_parsed_candidates(m) for m in audit.list_matches(conn, run_id)]
+    return {"run_id": run_id, "count": len(matches), "matches": matches}
 
 
 @app.get("/exceptions")
-def get_exceptions(run_id: Optional[str] = None):
-    conn = get_conn()
-    try:
-        run_id = resolve_run_id(conn, run_id)
-        exceptions = [_with_parsed_candidates(e) for e in audit.list_exceptions(conn, run_id)]
-        return {"run_id": run_id, "count": len(exceptions), "exceptions": exceptions}
-    finally:
-        conn.close()
+def get_exceptions(run_id: Optional[str] = None, conn=Depends(get_conn)):
+    run_id = resolve_run_id(conn, run_id)
+    exceptions = [_with_parsed_candidates(e) for e in audit.list_exceptions(conn, run_id)]
+    return {"run_id": run_id, "count": len(exceptions), "exceptions": exceptions}
 
 
 @app.get("/audit")
-def get_audit_log(run_id: Optional[str] = None):
-    conn = get_conn()
-    try:
-        run_id = resolve_run_id(conn, run_id)
-        entries = [_with_parsed_candidates(e) for e in audit.list_audit_log(conn, run_id)]
-        return {"run_id": run_id, "count": len(entries), "audit_log": entries}
-    finally:
-        conn.close()
+def get_audit_log(run_id: Optional[str] = None, conn=Depends(get_conn)):
+    run_id = resolve_run_id(conn, run_id)
+    entries = [_with_parsed_candidates(e) for e in audit.list_audit_log(conn, run_id)]
+    return {"run_id": run_id, "count": len(entries), "audit_log": entries}
 
 
 @app.get("/audit/{record_id}")
-def get_audit_trace(record_id: str, run_id: Optional[str] = None):
-    conn = get_conn()
-    try:
-        run_id = resolve_run_id(conn, run_id)
-        trace = audit.get_trace(conn, record_id, run_id)  # candidates_considered already parsed by audit.get_trace
-        if not trace["decisions"] and not trace["settlement_record"] and not trace["bank_record"]:
-            raise HTTPException(status_code=404, detail=f"No record found for id '{record_id}' in run {run_id}")
-        return trace
-    finally:
-        conn.close()
+def get_audit_trace(record_id: str, run_id: Optional[str] = None, conn=Depends(get_conn)):
+    run_id = resolve_run_id(conn, run_id)
+    trace = audit.get_trace(conn, record_id, run_id)  # candidates_considered already parsed by audit.get_trace
+    if not trace["decisions"] and not trace["settlement_record"] and not trace["bank_record"]:
+        raise HTTPException(status_code=404, detail=f"No record found for id '{record_id}' in run {run_id}")
+    return trace
 
 
 @app.post("/qa")
-def ask_question(req: QARequest):
-    conn = get_conn()
-    try:
-        return qa_agent.answer(req.question, conn, req.run_id, req.model)
-    finally:
-        conn.close()
+def ask_question(req: QARequest, conn=Depends(get_conn)):
+    return qa_agent.answer(req.question, conn, req.run_id, req.model)
