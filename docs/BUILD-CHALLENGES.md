@@ -74,6 +74,33 @@ was re-run end-to-end and re-validated against `ground_truth.csv`
 (66/66 correct, unchanged) plus a full API endpoint smoke test — no
 regressions.
 
+### Phase 5 review — sourced_from silently dropping cited record IDs
+**Issue:** Symbol-reference audit (grep-based, since Serena's CLI turned out
+to expose its tools only via a running MCP server, not one-shot flags —
+disproportionate setup for a 7-file codebase already fully understood)
+turned up an inconsistency: `main.py`'s `/audit/{record_id}` endpoint parsed
+`candidates_considered` from its raw JSON-string DB form before use, but
+`qa_agent.py`'s `get_trace` tool called `audit.get_trace()` directly and
+never did — the two callers had drifted. Reproduced end-to-end: asked the
+agent "what candidates were considered before matching STL33357554", got a
+**correct** answer (the LLM parsed the double-encoded string on its own),
+but `sourced_from` only listed 1 of the 3 record IDs the answer actually
+cited — the exact groundedness guarantee Phase 5 exists to provide was
+silently broken. A second, deeper layer of the same bug: even after fixing
+the JSON parsing, `_extract_record_ids` only recursed into dicts/lists and
+had no handling for a list of *bare* ID strings (which is what
+`candidates_considered` actually is) — reproduced in isolation before
+fixing.
+**Fix:** Moved the parsing into `audit.get_trace()` itself so every caller
+gets already-parsed data (fixing at the source instead of patching each of
+the two call sites separately, since leaving it caller-responsibility is
+what caused the drift in the first place); removed the now-redundant (and
+would-crash-by-double-parsing) post-processing in `main.py`. Extended
+`_extract_record_ids` to also collect bare strings matching known ID
+prefixes (`STL`/`BTXN`) when walking a list, not just dict fields. Verified
+against both repros, then re-ran the full regression suite (ground-truth
+validation + API smoke tests) — no regressions.
+
 ---
 
 ## Template for new entries

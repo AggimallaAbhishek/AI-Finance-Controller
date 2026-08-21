@@ -129,8 +129,7 @@ def get_audit_trace(record_id: str, run_id: Optional[str] = None):
     conn = get_conn()
     try:
         run_id = resolve_run_id(conn, run_id)
-        trace = audit.get_trace(conn, record_id, run_id)
-        trace["decisions"] = [_with_parsed_candidates(d) for d in trace["decisions"]]
+        trace = audit.get_trace(conn, record_id, run_id)  # candidates_considered already parsed by audit.get_trace
         if not trace["decisions"] and not trace["settlement_record"] and not trace["bank_record"]:
             raise HTTPException(status_code=404, detail=f"No record found for id '{record_id}' in run {run_id}")
         return trace

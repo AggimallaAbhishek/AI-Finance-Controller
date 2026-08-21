@@ -183,10 +183,17 @@ def get_trace(conn, record_id, run_id=None):
                 (run_id, d["bank_ref"]),
             ).fetchone()
 
+    decision_dicts = []
+    for d in decisions:
+        dd = dict(d)
+        if dd.get("candidates_considered"):
+            dd["candidates_considered"] = json.loads(dd["candidates_considered"])
+        decision_dicts.append(dd)
+
     return {
         "record_id": record_id,
         "run_id": run_id,
-        "decisions": [dict(d) for d in decisions],
+        "decisions": decision_dicts,
         "settlement_record": dict(settlement) if settlement else None,
         "bank_record": dict(bank_entry) if bank_entry else None,
         "counterpart_settlement_record": dict(counterpart_settlement) if counterpart_settlement else None,

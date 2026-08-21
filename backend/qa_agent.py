@@ -139,9 +139,14 @@ def _build_tool_dispatch(conn, run_id):
     }
 
 
+_ID_PREFIXES = ("STL", "BTXN")
+
+
 def _extract_record_ids(obj, found):
     """Walk a tool result and collect anything that looks like a record id,
-    so the caller can see exactly what data grounded the answer."""
+    so the caller can see exactly what data grounded the answer. Handles
+    both dicts keyed by field name (e.g. settlement_ref) and plain lists of
+    bare ID strings (e.g. candidates_considered)."""
     if isinstance(obj, dict):
         for key in ("settlement_ref", "bank_ref", "settlement_id", "txn_id", "record_id"):
             v = obj.get(key)
@@ -151,7 +156,10 @@ def _extract_record_ids(obj, found):
             _extract_record_ids(v, found)
     elif isinstance(obj, list):
         for item in obj:
-            _extract_record_ids(item, found)
+            if isinstance(item, str) and item.startswith(_ID_PREFIXES):
+                found.add(item)
+            else:
+                _extract_record_ids(item, found)
 
 
 def answer(question, conn, run_id=None, model=None):
