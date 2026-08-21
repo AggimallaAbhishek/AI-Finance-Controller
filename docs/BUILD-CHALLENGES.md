@@ -217,15 +217,31 @@ failure surfaces in the form exactly like a resolve failure would.
 issues, all reproduced before fixing:
 
 1. **Race condition in `resolve_exception`**: it read "is this currently
-   an exception" then wrote, with no transaction wrapping the two. Two
-   near-simultaneous resolves of the same record (double-click, two tabs)
-   could both pass the check and both succeed — reproduced 100% of the
-   time with a `ThreadPoolExecutor` test firing one "match" and one
-   "no_match" resolution concurrently at the same record. (First attempt
-   at a repro was itself flawed — it fired two concurrent "no_match"
-   calls, which are *designed* to both succeed since that resolution
-   keeps `match_status="exception"`; the real race only matters when the
-   two outcomes are mutually exclusive.)
+   an exception" then wrote, with no transaction wrapping the two. This
+   turned into a two-layer debugging story, worth recording honestly:
+   - *First repro attempt was itself flawed*: it fired two concurrent
+     "no_match" resolutions at the same record and asserted only one
+     could succeed. Both succeeded every time — but that's *correct*,
+     not a bug: "no_match" deliberately keeps `match_status="exception"`
+     (so a human can revisit and confirm again later), so two of them
+     racing isn't a real conflict.
+   - *Redesigned around a genuine conflict* (two concurrent "match"
+     attempts linking the same settlement to two different bank
+     counterparts — truly mutually exclusive) and added a `BEGIN
+     IMMEDIATE` transaction. It passed 8/8 on the first check — which
+     turned out to be false confidence. A later full-suite run failed
+     once; re-running the race test 20x in isolation showed a genuine
+     ~25% failure rate. Instrumented timing across failures showed both
+     "attempts" completing in well under a millisecond with overlapping
+     lifetimes — the manual `conn.execute("BEGIN IMMEDIATE")` wasn't
+     reliably serializing against Python's own implicit legacy
+     transaction handling (the sqlite3 module's default
+     `isolation_level=""` auto-manages transactions around DML in ways
+     that can conflict with manually issuing `BEGIN` as raw SQL). A
+     smaller isolated test (one thread holds the lock for a full second)
+     showed the second connection correctly blocking — proving the
+     locking mechanism itself works; the flakiness was specifically in
+     the fast-path interaction with Python's implicit transaction state.
 2. **`resolve_exception` accepted an empty or whitespace-only note** —
    only the frontend's `disabled` guard prevented it, not the seam that
    actually matters. A direct API call could create an unexplained
@@ -246,11 +262,15 @@ issues, all reproduced before fixing:
    indicate" — even though the data existed, just not through the tool
    it reached for.
 **Fix:**
-1. Wrapped the check-then-write in a single `BEGIN IMMEDIATE` transaction,
-   so SQLite serializes conflicting concurrent resolves — the loser sees
-   the winner's committed result and is correctly rejected. Verified with
-   the corrected test (8/8 clean runs) and confirmed the original flawed
-   test's "failure" was actually correct behavior, not a bug.
+1. Wrapped the check-then-write in a `BEGIN IMMEDIATE` transaction (so
+   SQLite serializes genuinely conflicting concurrent resolves) *and* set
+   `isolation_level=None` on the connection, handing SQLite's manual
+   transaction control fully to explicit `BEGIN`/`COMMIT`/`ROLLBACK`
+   rather than leaving Python's own implicit transaction bookkeeping in
+   the mix. Verification standard raised to match the failure rate this
+   found: 80 consecutive clean runs of the corrected race test (30, then
+   50 more) plus 5 consecutive full-suite runs, instead of trusting one
+   green run.
 2. Added a non-empty check at the top of `resolve_exception`, raising
    `ValueError` — defense in depth, not relying on the frontend alone.
 3. `get_stats()` now computes matched/exceptions/rule/llm/human counts
