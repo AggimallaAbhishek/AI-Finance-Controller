@@ -1,6 +1,8 @@
 # AI Finance Controller
 
 **Razorpay Individual Hackathon — Track 04, AI Finance Controller**
+**Status: v1.0 complete** (Phases 0–8 of `project_plan.md`) — see
+`project_plan_v2.md` for what's next.
 
 An agent that closes one finance-ops loop: reconciling Razorpay settlement
 data against a bank statement across a 50+ record batch, and letting a
