@@ -118,17 +118,7 @@ def _build_tool_dispatch(conn, run_id):
         return audit.get_trace(conn, record_id, run_id)
 
     def list_unmatched_bank_entries_over_amount(min_amount):
-        exceptions = audit.list_exceptions(conn, run_id)
-        bank_only = [e for e in exceptions if e["bank_ref"] and not e["settlement_ref"]]
-        hits = []
-        for e in bank_only:
-            row = conn.execute(
-                "SELECT * FROM bank_entries WHERE run_id = ? AND txn_id = ?",
-                (run_id, e["bank_ref"]),
-            ).fetchone()
-            if row and float(row["amount"]) > float(min_amount):
-                hits.append(dict(row))
-        return hits
+        return audit.list_unmatched_bank_entries_over_amount(conn, run_id, min_amount)
 
     return {
         "get_stats": get_stats,

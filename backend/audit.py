@@ -148,6 +148,24 @@ def list_exceptions(conn, run_id):
     return [dict(r) for r in rows]
 
 
+def list_unmatched_bank_entries_over_amount(conn, run_id, min_amount):
+    """Bank-side exceptions (no settlement match) above a Rupee threshold."""
+    bank_only_refs = conn.execute(
+        "SELECT bank_ref FROM audit_log WHERE run_id = ? AND match_status = 'exception' "
+        "AND bank_ref IS NOT NULL AND settlement_ref IS NULL",
+        (run_id,),
+    ).fetchall()
+    hits = []
+    for row in bank_only_refs:
+        entry = conn.execute(
+            "SELECT * FROM bank_entries WHERE run_id = ? AND txn_id = ?",
+            (run_id, row["bank_ref"]),
+        ).fetchone()
+        if entry and float(entry["amount"]) > float(min_amount):
+            hits.append(dict(entry))
+    return hits
+
+
 def get_trace(conn, record_id, run_id=None):
     """Given a settlement_id or txn_id, return the decision(s) referencing it
     plus the exact input row(s) it was based on — the full "why" behind an
@@ -199,57 +217,3 @@ def get_trace(conn, record_id, run_id=None):
         "counterpart_settlement_record": dict(counterpart_settlement) if counterpart_settlement else None,
         "counterpart_bank_record": dict(counterpart_bank) if counterpart_bank else None,
     }
-
-
-def _print_trace(trace):
-    print(f"record_id: {trace['record_id']}  (run: {trace['run_id']})")
-    if not trace["decisions"]:
-        print("  no audit_log entry found for this record_id")
-        return
-    for d in trace["decisions"]:
-        print(f"  decision: {d['match_status']}  confidence={d['confidence']}  tier={d['tier']}")
-        print(f"    reason: {d['reason']}")
-    for label in ["settlement_record", "bank_record", "counterpart_settlement_record", "counterpart_bank_record"]:
-        if trace[label]:
-            print(f"  {label}: {trace[label]}")
-
-
-def main():
-    import argparse
-
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", default="../data/output/audit.db")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    trace_p = sub.add_parser("trace", help="trace a settlement_id or txn_id to its decision + source rows")
-    trace_p.add_argument("record_id")
-    trace_p.add_argument("--run-id", default=None)
-
-    sub.add_parser("runs", help="list all reconciliation runs")
-
-    exc_p = sub.add_parser("exceptions", help="list exceptions for a run")
-    exc_p.add_argument("--run-id", default=None)
-
-    m_p = sub.add_parser("matches", help="list matches for a run")
-    m_p.add_argument("--run-id", default=None)
-
-    args = parser.parse_args()
-    conn = connect(args.db)
-
-    if args.command == "trace":
-        _print_trace(get_trace(conn, args.record_id, args.run_id))
-    elif args.command == "runs":
-        for row in list_runs(conn):
-            print(row)
-    elif args.command == "exceptions":
-        run_id = args.run_id or latest_run_id(conn)
-        for row in list_exceptions(conn, run_id):
-            print(row)
-    elif args.command == "matches":
-        run_id = args.run_id or latest_run_id(conn)
-        for row in list_matches(conn, run_id):
-            print(row)
-
-
-if __name__ == "__main__":
-    main()

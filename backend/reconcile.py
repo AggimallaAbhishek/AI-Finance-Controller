@@ -372,7 +372,7 @@ def main():
     print(f"wrote {result['outdir'] / 'matches.csv'}")
     print(f"wrote {result['outdir'] / 'exceptions.csv'}")
     print(f"wrote {result['db_path']} (audit trail — query with: "
-          f"python3 audit.py --db {result['db_path']} trace <record_id>)")
+          f"python3 audit_cli.py --db {result['db_path']} trace <record_id>)")
 
 
 if __name__ == "__main__":

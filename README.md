@@ -38,11 +38,13 @@ under its own `run_id`, so history accumulates across runs.
 **Audit trail queries**
 ```
 cd backend
-python3 audit.py --db ../data/output/audit.db trace <settlement_id_or_txn_id>
-python3 audit.py --db ../data/output/audit.db runs
-python3 audit.py --db ../data/output/audit.db matches      # latest run
-python3 audit.py --db ../data/output/audit.db exceptions   # latest run
+python3 audit_cli.py --db ../data/output/audit.db trace <settlement_id_or_txn_id>
+python3 audit_cli.py --db ../data/output/audit.db runs
+python3 audit_cli.py --db ../data/output/audit.db matches      # latest run
+python3 audit_cli.py --db ../data/output/audit.db exceptions   # latest run
 ```
+(`audit.py` is the storage/query module — schema owner for all of `main.py`, `reconcile.py`, and
+`qa_agent.py`; `audit_cli.py` is a thin CLI on top of it, nothing else depends on it.)
 `trace` returns the decision (matched/exception, confidence, reason) plus
 the exact source settlement/bank row(s) it was based on.
 
