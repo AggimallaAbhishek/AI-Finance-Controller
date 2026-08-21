@@ -6,7 +6,7 @@ full architecture and phase plan.
 
 ## Status
 
-Phase 0 (setup) through Phase 4 (backend API) complete. Match rate on the
+Phase 0 (setup) through Phase 5 (Q&A agent) complete. Match rate on the
 seed-42 batch: 90% (48 rule-matched + 6 LLM-reasoned), validated 66/66
 correct against `ground_truth.csv`.
 
@@ -63,7 +63,18 @@ Interactive API docs at http://localhost:8000/docs. Endpoints:
 | `GET /exceptions` | exception records for a run |
 | `GET /audit` | full audit log for a run |
 | `GET /audit/{record_id}` | trace a settlement_id/txn_id to its decision + source rows |
-| `POST /qa` | ask a question (body: `question`, `run_id` optional) — currently answers match rate, exception/match counts, and unmatched-bank-entries-over-amount; free-form Q&A lands in Phase 5 |
+| `POST /qa` | ask a free-form question (body: `question`, `run_id` and `model` optional) — Ollama tool-calling agent, grounded in the audit trail only |
+
+**Q&A agent**: `POST /qa` is a real Ollama tool-calling agent (`backend/qa_agent.py`) — it has no
+knowledge of the batch beyond 5 tools (`get_stats`, `list_exceptions`, `list_matches`,
+`get_trace`, `list_unmatched_bank_entries_over_amount`), each backed directly by `audit.py`.
+Every answer's `sourced_from` lists the exact record IDs (or run_id, for aggregate answers)
+the LLM's tool calls actually returned, so groundedness is independently checkable, not just
+claimed. Out-of-scope questions are refused rather than guessed at.
+```
+curl -X POST localhost:8000/qa -H "Content-Type: application/json" \
+  -d '{"question": "why is today'"'"'s payout short?"}'
+```
 
 **Frontend**
 ```

@@ -58,6 +58,7 @@ class ReconcileRequest(BaseModel):
 class QARequest(BaseModel):
     question: str
     run_id: Optional[str] = None
+    model: Optional[str] = None
 
 
 @app.get("/health")
@@ -141,6 +142,6 @@ def get_audit_trace(record_id: str, run_id: Optional[str] = None):
 def ask_question(req: QARequest):
     conn = get_conn()
     try:
-        return qa_agent.answer(req.question, conn, req.run_id)
+        return qa_agent.answer(req.question, conn, req.run_id, req.model)
     finally:
         conn.close()
