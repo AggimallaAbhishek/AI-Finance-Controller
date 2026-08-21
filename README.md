@@ -6,9 +6,12 @@ full architecture and phase plan.
 
 ## Status
 
-Phase 0 (setup) through Phase 6 (frontend dashboard) complete. Match rate
-on the seed-42 batch: 90% (48 rule-matched + 6 LLM-reasoned), validated
-66/66 correct against `ground_truth.csv`.
+Phase 0 (setup) through Phase 7 (integration & held-out test) complete.
+Match rate on the seed-42 dev batch: 90% (48 rule-matched + 6 LLM-reasoned),
+validated 66/66 against `ground_truth.csv`. Re-validated on a fresh,
+never-tuned-against held-out batch (seed=2026): identical 90% match rate,
+66/66 correct — see `docs/PHASE7-INTEGRATION-TEST.md` for the full report
+including sample Q&A exchanges.
 
 ## Running locally
 
@@ -18,10 +21,18 @@ cd data
 python3 generate_synthetic_data.py --count 60 --seed 42
 ```
 Regenerate with a different `--seed` for a fresh, untuned-against batch
-(used for Phase 7's held-out test). This also writes `ground_truth.csv` —
-the intended pairing + category per record, for validating the
-reconciliation engine's output. It is dev-only and is never read by the
-engine itself.
+(used for Phase 7's held-out test — see `data/heldout/`, generated with
+`--seed 2026`, kept separate from the seed-42 dev batch). This also writes
+`ground_truth.csv` — the intended pairing + category per record, for
+validating the reconciliation engine's output. It is dev-only and is never
+read by the engine itself.
+
+**Held-out test**: `POST /reconcile` accepts `settlement_path`/`bank_path`
+overrides, so the same live pipeline can be pointed at any batch:
+```
+curl -X POST localhost:8000/reconcile -H "Content-Type: application/json" \
+  -d '{"settlement_path": "../data/heldout/settlement.csv", "bank_path": "../data/heldout/bank_statement.csv"}'
+```
 
 **Reconciliation engine**
 ```
