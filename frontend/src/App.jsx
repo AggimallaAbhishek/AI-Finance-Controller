@@ -56,7 +56,7 @@ export default function App() {
     return (
       <main className="state-screen">
         <h1>AI Finance Controller</h1>
-        <p className="error-text">Couldn't load the dashboard: {errorMessage}</p>
+        <p className="error-text">Couldn’t load the dashboard: {errorMessage}</p>
         <p className="muted">Is the backend running at the configured API URL?</p>
       </main>
     )

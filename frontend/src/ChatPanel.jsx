@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { askQuestion } from './api'
 
 const SUGGESTIONS = [
@@ -6,6 +8,14 @@ const SUGGESTIONS = [
   'Why is today’s payout short?',
   'Show unmatched bank entries over ₹1000',
 ]
+
+const MARKDOWN_COMPONENTS = {
+  table: ({ children }) => (
+    <div className="chat-msg__table-wrap">
+      <table>{children}</table>
+    </div>
+  ),
+}
 
 export default function ChatPanel({ runId }) {
   const [messages, setMessages] = useState([])
@@ -65,7 +75,15 @@ export default function ChatPanel({ runId }) {
 
         {messages.map((m, i) => (
           <div key={i} className={`chat-msg chat-msg--${m.role}${m.isError ? ' chat-msg--error' : ''}`}>
-            <p>{m.content}</p>
+            {m.role === 'assistant' ? (
+              <div className="chat-msg__markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                  {m.content}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <p>{m.content}</p>
+            )}
             {m.sourcedFrom?.length > 0 && (
               <div className="chat-msg__sources">
                 {m.sourcedFrom.map((id) => (
