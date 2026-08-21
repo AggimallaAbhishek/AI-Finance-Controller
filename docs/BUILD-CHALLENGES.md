@@ -157,6 +157,26 @@ with a small safety margin) rather than tweaking it blindly. Verified via
 (657px and 813px tall) that the panel's bottom edge stays within the
 viewport with real margin to spare in both.
 
+### v2.0 Phase 9 — test fixture closed its own DB connection before use
+**Issue:** Writing the FastAPI `TestClient` tests, a seeding fixture drove
+the `get_conn` dependency generator manually to grab a connection for
+seed data: `next(main.app.dependency_overrides[main.get_conn]())`. Every
+`save_run` call in the fixture failed with
+`sqlite3.ProgrammingError: Cannot operate on a closed database` —
+immediately, on the very first write. Root cause: the generator object
+returned by calling the override function had no variable holding a
+reference to it — only the yielded `conn` value was kept. With nothing
+referencing the generator itself, Python garbage-collected it right after
+`next()` returned, and GC-ing a suspended generator calls `.close()` on
+it, which fires its `finally: conn.close()` block — closing the
+connection before the fixture ever got to use it.
+**Fix:** Stopped driving the dependency generator manually for test
+seeding entirely — the fixture now opens its own connection directly via
+`audit.connect(db_path)` pointed at the same file the override serves
+requests from, sidestepping the generator-lifetime issue altogether rather
+than working around it (e.g. by holding a reference and remembering to
+call `.close()` in the right order).
+
 ---
 
 ## Template for new entries

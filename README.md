@@ -96,6 +96,20 @@ generalizes rather than having been tuned to one batch. Full held-out test
 report, including sample Q&A exchanges, independently cross-checked against
 the raw audit trail: `docs/PHASE7-INTEGRATION-TEST.md`.
 
+## Testing
+
+```
+cd backend
+source .venv/bin/activate
+python3 -m pytest -v
+```
+35 tests, no network calls (the LLM tier is tested via an injectable fake
+function, not the real Ollama API) — covers the matching engine's rule
+tiers and tie-breaking, the LLM response parser's defensive-parsing edge
+cases, retry/backoff on transient LLM failures, the audit trail's storage
+and query functions against a real temp SQLite DB, and the FastAPI
+endpoints (including both 404 edge cases) via `TestClient`.
+
 ## Running locally
 
 Prerequisites: Python 3, Node.js, and `ollama` signed in to Ollama Cloud
@@ -169,18 +183,24 @@ python3 audit_cli.py --db ../data/output/audit.db trace <settlement_id_or_txn_id
 `reconcile.py` writes `matches.csv`, `exceptions.csv`, and `audit.db` to
 `data/output/`. Add `--no-llm` to run rules only (fast, no network calls).
 Model defaults to `gpt-oss:20b-cloud`; override with `--model` or the
-`OLLAMA_MODEL` env var.
+`OLLAMA_MODEL` env var. Rule-tier tolerances default to 2 days /
+₹10 — override with `RECONCILE_DATE_TOLERANCE_DAYS` /
+`RECONCILE_AMOUNT_TOLERANCE_RS`. A transient LLM call failure retries
+automatically (3 attempts, exponential backoff) before falling back to an
+honest exception.
 
 ## Repo layout
 
 ```
-data/            synthetic data generator, seed-42 dev batch, held-out batch
-backend/         reconcile.py (engine), audit.py (trail), qa_agent.py (Ollama agent),
-                 llm_matcher.py, main.py (FastAPI), audit_cli.py (inspector CLI)
-frontend/        React dashboard (Vite)
-docs/            ADR, glossary, build-challenges log, Phase 7 held-out test report,
-                 this demo script
-project_plan.md  the original phase-by-phase build plan this repo followed
+data/              synthetic data generator, seed-42 dev batch, held-out batch
+backend/           reconcile.py (engine), audit.py (trail), qa_agent.py (Ollama agent),
+                   llm_matcher.py, main.py (FastAPI), audit_cli.py (inspector CLI), tests/
+frontend/          React dashboard (Vite)
+docs/              ADR, glossary, build-challenges log, Phase 7 held-out test report,
+                   demo script
+project_plan.md    the v1.0 phase-by-phase build plan this repo followed
+project_plan_v2.md the v2.0 plan for what's next
+CHANGELOG.md       what shipped in each version
 ```
 
 ## Demo
