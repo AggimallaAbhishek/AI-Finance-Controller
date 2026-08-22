@@ -435,6 +435,53 @@ focus navigation is basic, universal HTML platform behavior, not
 something an app-level quirk could plausibly override, so the direct
 DOM check stands as sufficient verification.
 
+### v2.1 Phase 15 — a CSS Grid `minmax()` overflow trap, and a color-role collision the palette itself introduced
+
+**Issue:** an isolated re-critique after the Phase 15 design pass (provenance
+color palette, restructured stats header, self-hosted display font)
+reproduced a real bug: in `MatchList.jsx`'s expanded detail view, a
+bank narration value ("IMPS/RZP1637385475/RZP/PAY...") visually
+overlapped the adjacent "Bank amount" figure — in the exact view a user
+opens to verify *why* the LLM trusted a match.
+
+**Root cause:** `.detail-grid`'s `grid-template-columns: repeat(auto-fit,
+minmax(140px, 1fr))` combined with CSS Grid's default `min-width: auto`
+on grid items. A long unbreakable run in the narration text can force
+its item's intrinsic minimum width past the 140px track constraint,
+widening that track and pushing/overlapping the next column — a
+well-known Grid gotcha, not something the `minmax()` value alone
+guards against.
+
+**Fix:** `min-width: 0` on the grid item `div`s (lets the track actually
+shrink to its constraint) plus `overflow-wrap: anywhere` on `dd` (wraps
+long unbreakable content within its own box instead of overflowing it).
+Verified live: zero geometric overlap between any two `dd` elements in
+an expanded LLM-reasoned match's detail grid, confirmed via bounding-box
+comparison, not just a visual read.
+
+**A second finding, from the same re-critique:** the Phase 15 palette
+gave the LLM tier its own color (reusing `--accent`, the existing
+violet) — but `--accent` was *already* the settlement-side badge's
+color and the app's primary action color. The same hue now meant
+"click this," "the LLM decided this," and "this is the settlement
+side" simultaneously — reintroducing a smaller version of the exact
+"one undifferentiated accent" problem the palette was built to solve,
+just relocated to a new pair of components. Root cause: adding a new
+semantic role for a color (tier provenance) without auditing every
+*other* place that color was already doing a different job.
+
+**Fix:** gave `.side-badge` (settlement) a neutral bordered treatment
+(`--surface`/`--text-h`/`--border`) instead of `--accent` — "which
+side" is structural metadata, not a trust signal, so it no longer
+borrows a color that means something else elsewhere. `.side-badge--bank`
+was untouched (already used `--warn`, not part of the collision).
+
+Both fixes verified via a full re-critique: score moved from the
+Phase 12 baseline of 23/40 to 27/40, with the P0 and one of the three
+original P1s already resolved by earlier phases, and both P1s found by
+*this* re-critique fixed the same session they were found. See
+`.impeccable/critique/` for both full snapshots.
+
 ---
 
 ## Template for new entries

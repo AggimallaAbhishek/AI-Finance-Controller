@@ -1,6 +1,6 @@
 # AI Finance Controller — Project Plan v2.1
 
-**Status:** In progress — Phases 13–14 done.
+**Status:** In progress — Phases 13–15 done.
 **Builds on:** v2.0 (`project_plan_v2.md`, Phases 9–12, complete — see `CHANGELOG.md`)
 **Goal for this version:** frontend design and UX optimization only — no
 new backend capability, no new data sources. v2.0 proved the feature set
@@ -129,7 +129,7 @@ and Freedom) still scores 2/4.
   design. Both are legitimate v2.2+ backend-capability candidates, not
   silently dropped.
 
-### Phase 15 — Purpose-built visual identity
+### Phase 15 — Purpose-built visual identity — DONE
 
 The critique's Design Specificity Verdict, verbatim: content is
 genuinely reconciliation-specific (₹ formatting, tier labels tied to
@@ -155,6 +155,40 @@ deliberately here instead of folded in unplanned.
   23/40 baseline snapshot; the Design Specificity Verdict section should
   no longer read as generic-dashboard-shaped, and the total score should
   move meaningfully — not just on heuristic 8 (Aesthetic/Minimalist).
+
+**Outcome:**
+- **Color strategy** — split the single undifferentiated `--accent` role
+  into an "action" color (buttons, links, focus) and a new provenance
+  palette for confidence tiers: teal (`--tier-rule`, new) for every
+  rule-based confidence, the existing violet for `llm-reasoned`, the
+  existing `--success` green for `human-resolved`. Applied consistently
+  across `tiers.js` (the single source of truth), tier badges, filter
+  chips, and the stats header — every new pairing independently
+  contrast-verified at 5.3:1–16.2:1 (light and dark), comfortably over
+  WCAG AA.
+- **Layout** — the stats header was, per craft-floor, literally the
+  named "hero-metric template" default (big number, small label,
+  supporting stats). Restructured into a single flowing ledger-line
+  sentence ("90% matched (90/100) · 80 by rule · 10 by LLM · 0 by you ·
+  16 open exceptions"), each figure colored by its own provenance
+  instead of one undifferentiated purple.
+- **Typography** — sourced and self-hosted Fraunces (SIL OFL, one 700
+  woff2, `frontend/src/assets/fonts/`), used only for the H1 and the
+  match-rate figure; every other element stays on the original
+  system-font stack. Verified `document.fonts` shows it loaded.
+- **Re-critique (full dual-agent run, not just self-assessment):**
+  23/40 → **27/40**. Caught two real issues the first pass introduced,
+  both fixed the same session — a CSS Grid `minmax()` overflow bug in
+  the match detail view, and a color-role collision where the new
+  LLM-tier violet turned out to be the same hue as the action color
+  *and* the settlement side-badge. Full root cause and fix for both in
+  `docs/BUILD-CHALLENGES.md`; both critique snapshots in
+  `.impeccable/critique/`.
+- **Left open, by design**: an always-visible tier legend (P2 — hover
+  tooltips exist, a persistent legend doesn't) and a real redesign of
+  the still-generic Upload & Run tab (P3) — both real findings, both
+  bigger or lower-priority than fit this phase's close-out. Candidates
+  for Phase 16 or a future phase, not silently dropped.
 
 ### Phase 16 — Power-user efficiency (stretch)
 
