@@ -1,6 +1,6 @@
 # AI Finance Controller — Project Plan v2.1
 
-**Status:** Planned — not started.
+**Status:** In progress — Phase 13 done.
 **Builds on:** v2.0 (`project_plan_v2.md`, Phases 9–12, complete — see `CHANGELOG.md`)
 **Goal for this version:** frontend design and UX optimization only — no
 new backend capability, no new data sources. v2.0 proved the feature set
@@ -41,7 +41,7 @@ guess at what needs polish.
 
 ## 2. Phases
 
-### Phase 13 — Information density & cognitive load
+### Phase 13 — Information density & cognitive load — DONE
 
 The critique's cognitive-load checklist failed on "chunking" and
 "minimal choices": the filter bar shows 5 fields plus up to 6 tier
@@ -58,10 +58,18 @@ chips simultaneously, always expanded, on every visit to either list.
   currently nowhere in the UI
 - Fix `StatsHeader`'s "By you" layout shift (renders only once
   `human_resolved > 0`, shifting everything else on first resolve)
-- **Exit check:** re-score the cognitive-load checklist from the
-  critique — chunking and minimal-choices should both pass; verify live
-  that the filter bar's collapsed state still surfaces an active-filter
-  count, and that hovering a tier badge or chip explains its meaning.
+- **Exit check, verified live:** the filter bar defaults to collapsed
+  (opening automatically only when filters are already active), shows
+  a "Filters (N)" badge and a live result count while collapsed, and
+  "Clear filters" is reachable without expanding; the run picker leads
+  with `{date} · {match%} · {record count} · #{short ref}` instead of
+  the technical run_id; every tier badge and filter chip carries a
+  `title` tooltip explaining what that tier means, sourced from one
+  shared `tiers.js` module (previously duplicated between `FilterBar.jsx`
+  and `MatchList.jsx`) so the legend can't drift between the two places
+  it's shown; the "By you" stat always renders, no more layout shift on
+  first resolve. Extended the Vitest suite (10 new tests: `countActiveFilters`,
+  `formatRunOption`, `shortRunRef`) — 37/37 frontend, 82/82 backend.
 
 ### Phase 14 — Accessibility & keyboard completeness
 
