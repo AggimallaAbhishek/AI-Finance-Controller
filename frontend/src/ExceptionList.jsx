@@ -93,13 +93,22 @@ function CounterpartPicker({ candidates, value, onChange, disabled }) {
         autoComplete="off"
       />
       {open && visible.length > 0 && (
-        <ul className="counterpart-picker__list" role="listbox">
+        // tabIndex=-1: Chrome makes an overflow:auto container an implicit
+        // tab stop once its content overflows, even with no tabindex set —
+        // without this, keyboard users hit an extra, silent stop here
+        // between the input and the Note field.
+        <ul className="counterpart-picker__list" role="listbox" tabIndex={-1}>
           {visible.map((c, i) => {
             const id = c.settlement_ref || c.bank_ref
             return (
               <li key={id} role="option" aria-selected={i === highlightIndex}>
+                {/* tabIndex=-1: standard combobox pattern — options are
+                    navigated via ArrowUp/Down + Enter on the input, never
+                    via Tab. Without this, tabbing walked through up to 8
+                    real buttons and skipped past the Note field entirely. */}
                 <button
                   type="button"
+                  tabIndex={-1}
                   className={`counterpart-picker__option${i === highlightIndex ? ' counterpart-picker__option--active' : ''}`}
                   onMouseEnter={() => setHighlightIndex(i)}
                   onClick={() => select(c)}
@@ -198,6 +207,10 @@ function ResolveActions({ recordId, candidates, runId, onResolved }) {
           rows={2}
         />
       </label>
+      <p className="resolve-form__permanence muted">
+        This is recorded permanently in the audit trail and can’t be undone —
+        double-check before submitting.
+      </p>
       {error && <p className="error-text">Couldn’t resolve: {error}</p>}
       <div className="resolve-form__actions">
         <button type="button" onClick={() => setMode(null)} disabled={submitting}>
@@ -250,6 +263,7 @@ function ExceptionRow({ exception, allExceptions, runId, onResolved }) {
         type="button"
         className="exception-row__summary"
         aria-expanded={expanded}
+        aria-label={`${side === 'settlement' ? 'Settlement' : 'Bank'} exception ${recordId}, details`}
         onClick={toggle}
       >
         <span className={`side-badge side-badge--${side}`}>

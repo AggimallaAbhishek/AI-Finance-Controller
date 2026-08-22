@@ -1,6 +1,6 @@
 # AI Finance Controller — Project Plan v2.1
 
-**Status:** In progress — Phase 13 done.
+**Status:** In progress — Phases 13–14 done.
 **Builds on:** v2.0 (`project_plan_v2.md`, Phases 9–12, complete — see `CHANGELOG.md`)
 **Goal for this version:** frontend design and UX optimization only — no
 new backend capability, no new data sources. v2.0 proved the feature set
@@ -71,7 +71,7 @@ chips simultaneously, always expanded, on every visit to either list.
   first resolve. Extended the Vitest suite (10 new tests: `countActiveFilters`,
   `formatRunOption`, `shortRunRef`) — 37/37 frontend, 82/82 backend.
 
-### Phase 14 — Accessibility & keyboard completeness
+### Phase 14 — Accessibility & keyboard completeness — DONE
 
 The v2.0 pass closed the contrast failure (Sam persona, red flag #1)
 but not the labeling gap (red flag #2), and heuristic 3 (User Control
@@ -95,6 +95,39 @@ and Freedom) still scores 2/4.
   keyboard-only with visible focus at every step; re-run the Sam persona
   walkthrough from the critique and confirm both original red flags are
   closed, not just the contrast one.
+
+**Outcome:**
+- Both `ExceptionRow` and `MatchRow` toggle buttons now carry an
+  explicit `aria-label` (e.g. "Settlement exception STL18409661,
+  details") instead of relying on concatenated visible text —
+  `aria-expanded` already announces open/closed state. Both red flags
+  from the critique's Sam persona are now closed, not just contrast.
+- The live keyboard-only pass (tracked via a real `focusin` listener,
+  not a visual read) found a genuine keyboard trap: tabbing into the
+  counterpart picker with its dropdown open walked through up to 8
+  candidate buttons, then skipped past the Note field and Submit
+  entirely. Root cause and fix documented in
+  `docs/BUILD-CHALLENGES.md` — listbox options and their scrollable
+  container now correctly carry `tabIndex={-1}`, the standard
+  combobox pattern. Verified structurally via direct DOM inspection;
+  full live re-verification of the post-fix sequence was cut short by
+  an environmental issue (the browser tab lost foreground/input-routing
+  status mid-session, confirmed independent of the fix — see the
+  BUILD-CHALLENGES entry for how that was isolated).
+- Added a "this can't be undone" note to the resolve form before
+  submit — a real, in-scope piece of the heuristic-3/error-prevention
+  gap, not just documentation.
+- **Evaluated, not implemented** (both require new backend capability,
+  which v2.1 explicitly excludes): cancelling an in-flight
+  reconciliation job needs a real cancel endpoint able to interrupt a
+  running background thread/Ollama call — there isn't one, and building
+  one is backend work, not frontend polish. True undo-after-resolve
+  needs a way to re-open an already-resolved record, which the current
+  `resolve_exception` API structurally doesn't support (it rejects any
+  attempt to resolve a record that isn't currently an exception) — and
+  arguably shouldn't, given the audit trail's intentionally append-only
+  design. Both are legitimate v2.2+ backend-capability candidates, not
+  silently dropped.
 
 ### Phase 15 — Purpose-built visual identity
 

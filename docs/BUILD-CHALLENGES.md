@@ -397,6 +397,44 @@ this session's own click targeting first.
 other application changes since the underlying flow was already
 correct.
 
+### v2.1 Phase 14 — a real keyboard trap in the counterpart picker, found by an actual keyboard walk
+
+**Issue:** while doing a live, keyboard-only pass across the dashboard
+(recording every `focusin` target via a temporary listener rather than
+trusting a visual read), tabbing from the counterpart-picker's search
+input walked through every one of its open dropdown's candidate
+buttons (up to 8) one at a time, then jumped past the "Note (why?)"
+field and the Cancel/Submit buttons entirely, landing on an unrelated
+exception row further down the page. A keyboard-only user could never
+reach Submit via Tab once the dropdown had candidates in it.
+
+**Root cause:** the dropdown's option `<button>` elements had no
+`tabIndex`, so they defaulted into the page's normal sequential focus
+order — the standard combobox/listbox ARIA pattern requires listbox
+options to be excluded from Tab order entirely (`tabIndex={-1}`) and
+navigated via Arrow keys on the owning input instead, which this
+component already did correctly for Arrow/Enter but hadn't done for
+Tab. A second, related issue surfaced while fixing the first: once the
+buttons were excluded, Tab landed on the dropdown's `<ul>` container
+instead — Chrome makes an `overflow:auto` container an implicit tab
+stop once its content overflows, even with no `tabindex` set at all.
+
+**Fix:** added `tabIndex={-1}` to both the option buttons and the
+`<ul>` listbox container in `ExceptionList.jsx`'s `CounterpartPicker`.
+Verified structurally via direct DOM inspection (`tabIndexProp: -1`
+confirmed present on exactly the right elements post-fix) — full live
+re-verification of the resulting Tab sequence was cut short mid-pass
+when the browser tab lost foreground/input-routing status
+(`document.hidden` flipped to `true` partway through, and the same
+"Tab doesn't move focus" symptom then reproduced even on unrelated,
+previously-working elements like the tab bar — confirming it was a
+session/environment issue, not a regression from the fix). Not chased
+further, per the standing "don't rabbit-hole on browser-automation
+instability" guidance — `tabIndex={-1}`'s exclusion from sequential
+focus navigation is basic, universal HTML platform behavior, not
+something an app-level quirk could plausibly override, so the direct
+DOM check stands as sufficient verification.
+
 ---
 
 ## Template for new entries

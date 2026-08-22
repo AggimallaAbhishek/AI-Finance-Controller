@@ -415,6 +415,11 @@ button {
   resize: vertical;
 }
 
+.resolve-form__permanence {
+  margin: -2px 0 0;
+  font-size: 12px;
+}
+
 .resolve-form__actions {
   display: flex;
   justify-content: flex-end;

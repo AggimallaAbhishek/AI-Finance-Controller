@@ -35,7 +35,13 @@ function MatchRow({ match, runId }) {
 
   return (
     <li className="exception-row">
-      <button type="button" className="exception-row__summary" aria-expanded={expanded} onClick={toggle}>
+      <button
+        type="button"
+        className="exception-row__summary"
+        aria-expanded={expanded}
+        aria-label={`${TIER_LABELS[match.confidence] || match.confidence} match, ${match.settlement_ref} to ${match.bank_ref}, details`}
+        onClick={toggle}
+      >
         <span className="tier-badge" title={TIER_HINTS[match.confidence]}>{TIER_LABELS[match.confidence] || match.confidence}</span>
         <code className="exception-row__id">{match.settlement_ref}</code>
         <span className="muted">&rarr;</span>
