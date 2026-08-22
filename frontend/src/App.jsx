@@ -2,15 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getExceptions, getMatches, getRuns } from './api'
 import StatsHeader from './StatsHeader'
 import ExceptionList from './ExceptionList'
+import MatchList from './MatchList'
+import RunPicker from './RunPicker'
+import ReconcileRunner from './ReconcileRunner'
+import FilterBar, { applyFilters, DEFAULT_FILTERS } from './FilterBar'
 import ChatPanel from './ChatPanel'
 
 export default function App() {
   const [status, setStatus] = useState('loading') // loading | empty | error | ready
   const [errorMessage, setErrorMessage] = useState('')
+  const [runs, setRuns] = useState([])
   const [run, setRun] = useState(null)
   const [matches, setMatches] = useState([])
   const [exceptions, setExceptions] = useState([])
   const [chatOpen, setChatOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState('exceptions') // exceptions | matches
+  const [filters, setFilters] = useState(DEFAULT_FILTERS)
 
   const refresh = useCallback(async (runId) => {
     const [{ matches }, { exceptions }] = await Promise.all([getMatches(runId), getExceptions(runId)])
@@ -18,17 +25,22 @@ export default function App() {
     setExceptions(exceptions)
   }, [])
 
+  const selectRun = useCallback(async (runId, runList) => {
+    const selected = (runList || runs).find((r) => r.run_id === runId)
+    if (selected) setRun(selected)
+    await refresh(runId)
+  }, [refresh, runs])
+
   useEffect(() => {
     async function load() {
       try {
-        const { runs } = await getRuns()
-        if (runs.length === 0) {
+        const { runs: runList } = await getRuns()
+        if (runList.length === 0) {
           setStatus('empty')
           return
         }
-        const latest = runs[0]
-        setRun(latest)
-        await refresh(latest.run_id)
+        setRuns(runList)
+        await selectRun(runList[0].run_id, runList)
         setStatus('ready')
       } catch (e) {
         setErrorMessage(e.message)
@@ -36,7 +48,14 @@ export default function App() {
       }
     }
     load()
-  }, [refresh])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function handleReconcileComplete(newRunId) {
+    const { runs: runList } = await getRuns()
+    setRuns(runList)
+    await selectRun(newRunId, runList)
+  }
 
   // The run's stored stats are a snapshot from when the automated pipeline
   // ran — a human resolution afterward doesn't rewrite that snapshot (it's

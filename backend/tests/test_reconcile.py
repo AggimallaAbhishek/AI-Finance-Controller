@@ -117,6 +117,39 @@ def test_tolerance_constants_are_configurable_via_environment(monkeypatch):
         importlib.reload(reconcile)  # restore defaults for subsequent tests
 
 
+def test_progress_cb_reports_real_stage_and_counts():
+    # Phase 11: the trigger-run button needs real progress, not a spinner
+    # that looks stuck — progress_cb must fire with actual done/total
+    # counts as each tier processes, not just a start/end pair.
+    s1 = settlement(id="STL1", ref="RZP1", d=date(2026, 7, 1))
+    s2 = settlement(id="STL2", ref="RZP2", d=date(2026, 7, 1))
+    b1 = bank(id="BTXN1", ref="RZP1", d=date(2026, 7, 1))
+    b2 = bank(id="BTXN2", ref="RZP2", d=date(2026, 7, 20))  # beyond tolerance -> LLM tier
+
+    def fake_llm_match(settlement_dict, candidate_dicts, model=None):
+        return {"match_found": True, "matched_bank_txn_id": candidate_dicts[0]["txn_id"], "reasoning": "fake"}
+
+    events = []
+    run_reconciliation(
+        [s1, s2], [b1, b2], use_llm=True, llm_fn=fake_llm_match,
+        progress_cb=lambda stage, done, total: events.append((stage, done, total)),
+    )
+
+    stages = {e[0] for e in events}
+    assert "rules" in stages
+    assert "llm" in stages
+    assert "persisting" in stages
+    rule_events = [e for e in events if e[0] == "rules"]
+    assert rule_events[-1][1:] == (2, 2)  # done reaches total for the rule tier
+    llm_events = [e for e in events if e[0] == "llm"]
+    assert llm_events[-1][1:] == (1, 1)  # one settlement fell to the LLM tier
+
+
+def test_progress_cb_is_optional():
+    matches, exceptions, _, _ = run_reconciliation([settlement()], [bank()], use_llm=False)
+    assert len(matches) == 1  # no progress_cb passed — must not raise
+
+
 def test_rule_tier_prefers_closer_amount_over_closer_date():
     # Regression: the engine previously kept whichever candidate was
     # encountered first in list order rather than the objectively closer

@@ -139,8 +139,18 @@ def shortlist_candidates(settlement, unclaimed_bank):
     return [b for _, b in scored[:MAX_CANDIDATES]]
 
 
-def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_verdict, model=None):
-    """Returns (matches, exceptions, audit_entries, stats)."""
+def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_verdict, model=None,
+                        progress_cb=None):
+    """Returns (matches, exceptions, audit_entries, stats).
+
+    progress_cb(stage, done, total), if given, is called with real counts as
+    each tier processes — stages "rules", "llm" (only if any settlement
+    falls to it), "persisting" — so a caller (the async /reconcile job) can
+    show real progress instead of a spinner that looks stuck."""
+    def report(stage, done, total):
+        if progress_cb:
+            progress_cb(stage, done, total)
+
     bank_by_id = {b.txn_id: b for b in bank_entries}
     claimed = set()
     matches = []
@@ -150,7 +160,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
     settlements_sorted = sorted(settlements, key=lambda s: s.settlement_id)
 
     # Tier 1-3: rules
-    for s in settlements_sorted:
+    for i, s in enumerate(settlements_sorted):
         best = None  # (b, confidence, reason, amount_diff, date_diff)
         for b in bank_entries:
             if b.txn_id in claimed:
@@ -188,10 +198,11 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
             })
         else:
             unresolved.append(s)
+        report("rules", i + 1, len(settlements_sorted))
 
     # Tier 4: LLM for the ambiguous middle
     exceptions = []
-    for s in unresolved:
+    for i, s in enumerate(unresolved):
         unclaimed_bank = [b for b in bank_entries if b.txn_id not in claimed]
         candidates = shortlist_candidates(s, unclaimed_bank)
 
@@ -222,6 +233,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
                 "reason": reason,
                 "tier": tier,
             })
+            report("llm", i + 1, len(unresolved))
             continue
 
         candidate_dicts = [
@@ -276,6 +288,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
                 "model": model or DEFAULT_MODEL,
                 "candidates_considered": [c["txn_id"] for c in candidate_dicts],
             })
+        report("llm", i + 1, len(unresolved))
 
     # Unclaimed bank rows are bank-side exceptions
     for b in bank_entries:
@@ -308,6 +321,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
         "bank_exceptions": sum(1 for e in exceptions if e["bank_ref"] and not e["settlement_ref"]),
         "match_rate": round(len(matches) / len(settlements), 4) if settlements else 0.0,
     }
+    report("persisting", 0, 1)
     return matches, exceptions, audit_entries, stats
 
 
@@ -319,7 +333,7 @@ def write_csv(path, rows, fieldnames):
 
 
 def run_and_persist(settlement_path, bank_path, outdir=None, db_path=None,
-                     use_llm=True, model=None):
+                     use_llm=True, model=None, progress_cb=None):
     """Load the batch, run reconciliation, write matches/exceptions.csv, and
     persist the full audit trail to SQLite. Shared by the CLI (below) and
     the FastAPI /reconcile route, so both go through the exact same path.
@@ -335,7 +349,7 @@ def run_and_persist(settlement_path, bank_path, outdir=None, db_path=None,
     bank_entries = load_bank_entries(bank_path)
 
     matches, exceptions, audit_entries, stats = run_reconciliation(
-        settlements, bank_entries, use_llm=use_llm, model=model
+        settlements, bank_entries, use_llm=use_llm, model=model, progress_cb=progress_cb
     )
 
     fieldnames = ["match_status", "settlement_ref", "bank_ref", "confidence", "reason"]
@@ -351,6 +365,8 @@ def run_and_persist(settlement_path, bank_path, outdir=None, db_path=None,
     audit.save_bank_entries(conn, run_id, bank_entries)
     audit.save_audit_entries(conn, run_id, audit_entries)
     conn.close()
+    if progress_cb:
+        progress_cb("persisting", 1, 1)
 
     return {
         "run_id": run_id, "stats": stats, "matches": matches, "exceptions": exceptions,

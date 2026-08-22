@@ -84,6 +84,41 @@ def test_list_matches_and_exceptions_filter_by_status(conn):
     assert len(audit.list_exceptions(conn, run_id)) == 1
 
 
+def test_list_matches_are_enriched_with_amount_and_date(conn):
+    # Phase 11: the Matches/Exceptions tabs filter by amount range and date
+    # range, which audit_log itself doesn't carry (only refs) — enrich from
+    # the source settlement/bank rows at read time.
+    run_id = make_run(conn)
+    s = Settlement("STL1", "RZP1", Decimal("100.00"), date(2026, 7, 1), "settled")
+    b = BankEntry("BTXN1", "RZP1", Decimal("100.00"), date(2026, 7, 3), "n")
+    audit.save_settlements(conn, run_id, [s])
+    audit.save_bank_entries(conn, run_id, [b])
+    audit.save_audit_entries(conn, run_id, [{
+        "timestamp": "t", "settlement_ref": "STL1", "bank_ref": "BTXN1",
+        "match_status": "matched", "confidence": "fuzzy-date", "reason": "r", "tier": "rule",
+    }])
+
+    match = audit.list_matches(conn, run_id)[0]
+    # Settlement side wins when both exist — an arbitrary but consistent
+    # choice, since the two can differ within tolerance.
+    assert match["amount"] == "100.00"
+    assert match["date"] == "2026-07-01"
+
+
+def test_list_exceptions_are_enriched_from_whichever_side_exists(conn):
+    run_id = make_run(conn)
+    b = BankEntry("BTXN1", "RZP_UNRELATED", Decimal("250.00"), date(2026, 7, 5), "n")
+    audit.save_bank_entries(conn, run_id, [b])
+    audit.save_audit_entries(conn, run_id, [{
+        "timestamp": "t", "settlement_ref": None, "bank_ref": "BTXN1",
+        "match_status": "exception", "confidence": None, "reason": "r", "tier": "rule",
+    }])
+
+    exception = audit.list_exceptions(conn, run_id)[0]
+    assert exception["amount"] == "250.00"
+    assert exception["date"] == "2026-07-05"
+
+
 def test_list_unmatched_bank_entries_over_amount_excludes_at_threshold(conn):
     run_id = make_run(conn)
     b = BankEntry("BTXN1", "RZP1", Decimal("100.00"), date(2026, 7, 1), "n")

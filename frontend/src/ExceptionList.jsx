@@ -1,5 +1,11 @@
 import { useState } from 'react'
 import { getTrace, resolveException } from './api'
+import { downloadCsv } from './csv'
+
+function formatAmount(amount) {
+  if (amount === null || amount === undefined) return '—'
+  return `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+}
 
 function ResolveActions({ recordId, runId, onResolved }) {
   const [mode, setMode] = useState(null) // null | 'no_match' | 'match'
@@ -125,6 +131,7 @@ function ExceptionRow({ exception, runId, onResolved }) {
           {side === 'settlement' ? 'Settlement' : 'Bank'}
         </span>
         <code className="exception-row__id">{recordId}</code>
+        <span className="exception-row__amount">{formatAmount(exception.amount)}</span>
         <span className="exception-row__reason">{exception.reason}</span>
         {reviewed && <span className="reviewed-badge">Reviewed</span>}
         <span className="exception-row__chevron" aria-hidden="true">
@@ -170,26 +177,39 @@ function ExceptionRow({ exception, runId, onResolved }) {
   )
 }
 
-export default function ExceptionList({ exceptions, runId, onResolved }) {
-  if (exceptions.length === 0) {
-    return (
-      <section className="exception-list" aria-label="Exceptions">
-        <h2>Exceptions</h2>
-        <p className="empty-state">No exceptions — every record matched.</p>
-      </section>
-    )
+export default function ExceptionList({ exceptions, allCount, runId, onResolved }) {
+  function exportCsv() {
+    downloadCsv(`exceptions-${runId}.csv`, exceptions, [
+      { label: 'side', value: (e) => (e.settlement_ref ? 'settlement' : 'bank') },
+      { label: 'record_id', value: (e) => e.settlement_ref || e.bank_ref },
+      { label: 'amount', value: (e) => e.amount },
+      { label: 'date', value: (e) => e.date },
+      { label: 'reason', value: (e) => e.reason },
+      { label: 'reviewed', value: (e) => (e.tier === 'human' ? 'yes' : 'no') },
+    ])
   }
 
   return (
     <section className="exception-list" aria-label="Exceptions">
-      <h2>
-        Exceptions <span className="muted">({exceptions.length})</span>
-      </h2>
-      <ul className="exception-list__items">
-        {exceptions.map((e) => (
-          <ExceptionRow key={e.id} exception={e} runId={runId} onResolved={onResolved} />
-        ))}
-      </ul>
+      <div className="list-header">
+        <h2>
+          Exceptions <span className="muted">({exceptions.length})</span>
+        </h2>
+        <button type="button" className="export-button" onClick={exportCsv} disabled={exceptions.length === 0}>
+          Export CSV
+        </button>
+      </div>
+      {exceptions.length === 0 ? (
+        <p className="empty-state">
+          {allCount === 0 ? 'No exceptions — every record matched.' : 'No exceptions match these filters.'}
+        </p>
+      ) : (
+        <ul className="exception-list__items">
+          {exceptions.map((e) => (
+            <ExceptionRow key={e.id} exception={e} runId={runId} onResolved={onResolved} />
+          ))}
+        </ul>
+      )}
     </section>
   )
 }

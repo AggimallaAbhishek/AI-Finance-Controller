@@ -146,9 +146,26 @@ def list_audit_log(conn, run_id):
     return [dict(r) for r in rows]
 
 
+# Amount/date aren't columns on audit_log itself (only refs are) — the
+# dashboard's amount-range/date-range filters need them, so both queries
+# below enrich from the source settlement/bank rows at read time. Settlement
+# side wins when a row has both (matches always do; the two can differ
+# within tolerance) — an arbitrary but consistent choice.
+_AMOUNT_DATE_JOIN = """
+    LEFT JOIN settlements s ON s.run_id = a.run_id AND s.settlement_id = a.settlement_ref
+    LEFT JOIN bank_entries be ON be.run_id = a.run_id AND be.txn_id = a.bank_ref
+"""
+_AMOUNT_DATE_SELECT = "a.*, COALESCE(s.amount, be.amount) AS amount, COALESCE(s.date, be.date) AS date"
+
+
 def list_matches(conn, run_id):
     rows = conn.execute(
-        "SELECT * FROM audit_log WHERE run_id = ? AND match_status = 'matched' ORDER BY id",
+        f"""
+        SELECT {_AMOUNT_DATE_SELECT} FROM audit_log a
+        {_AMOUNT_DATE_JOIN}
+        WHERE a.run_id = ? AND a.match_status = 'matched'
+        ORDER BY a.id
+        """,
         (run_id,),
     ).fetchall()
     return [dict(r) for r in rows]
@@ -161,8 +178,9 @@ def list_exceptions(conn, run_id):
     human "resolved to match" row. audit_log itself is never mutated; this
     is a read-time view over its full, immutable history."""
     rows = conn.execute(
-        """
-        SELECT * FROM audit_log a
+        f"""
+        SELECT {_AMOUNT_DATE_SELECT} FROM audit_log a
+        {_AMOUNT_DATE_JOIN}
         WHERE a.run_id = ? AND a.match_status = 'exception'
         AND NOT EXISTS (
             SELECT 1 FROM audit_log b

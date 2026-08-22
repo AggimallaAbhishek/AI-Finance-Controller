@@ -169,3 +169,64 @@ def test_qa_with_no_run_gives_honest_answer_not_a_crash(client):
     resp = test_client.post("/qa", json={"question": "what is the match rate?"})
     assert resp.status_code == 200
     assert "run" in resp.json()["answer"].lower()
+
+
+def _poll_job_until_done(test_client, job_id, timeout=2.0):
+    import time
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        resp = test_client.get(f"/reconcile/status/{job_id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        if body["status"] in ("done", "error"):
+            return body
+        time.sleep(0.01)
+    raise AssertionError(f"job {job_id} did not finish within {timeout}s")
+
+
+def test_async_reconcile_reports_real_progress_and_completes(client, monkeypatch):
+    # The trigger-run button needs real progress, not a spinner that looks
+    # stuck — this drives the actual background-thread + polling path (not
+    # just run_and_persist in isolation, which test_reconcile.py covers).
+    test_client, _ = client
+
+    def fake_run_and_persist(settlement_path, bank_path, outdir=None, db_path=None,
+                              use_llm=True, model=None, progress_cb=None):
+        if progress_cb:
+            progress_cb("rules", 1, 2)
+            progress_cb("rules", 2, 2)
+            progress_cb("persisting", 1, 1)
+        return {"run_id": "async-run-1", "stats": {"match_rate": 1.0}}
+
+    monkeypatch.setattr(main.reconcile, "run_and_persist", fake_run_and_persist)
+
+    resp = test_client.post("/reconcile/async", json={})
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+
+    final = _poll_job_until_done(test_client, job_id)
+    assert final["status"] == "done"
+    assert final["stage"] == "persisting"
+    assert final["result"]["run_id"] == "async-run-1"
+
+
+def test_async_reconcile_surfaces_errors_instead_of_hanging(client, monkeypatch):
+    test_client, _ = client
+
+    def failing_run_and_persist(*args, **kwargs):
+        raise RuntimeError("Ollama unreachable")
+
+    monkeypatch.setattr(main.reconcile, "run_and_persist", failing_run_and_persist)
+
+    resp = test_client.post("/reconcile/async", json={})
+    job_id = resp.json()["job_id"]
+
+    final = _poll_job_until_done(test_client, job_id)
+    assert final["status"] == "error"
+    assert "Ollama unreachable" in final["error"]
+
+
+def test_reconcile_status_404s_for_unknown_job(client):
+    test_client, _ = client
+    resp = test_client.get("/reconcile/status/does-not-exist")
+    assert resp.status_code == 404

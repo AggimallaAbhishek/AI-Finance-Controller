@@ -25,6 +25,23 @@ export function getTrace(recordId, runId) {
   return request(`/audit/${encodeURIComponent(recordId)}?run_id=${encodeURIComponent(runId)}`)
 }
 
+export async function startReconcileAsync() {
+  const res = await fetch(`${API_BASE}/reconcile/async`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `${res.status} ${res.statusText}`)
+  }
+  return res.json()
+}
+
+export function getReconcileStatus(jobId) {
+  return request(`/reconcile/status/${encodeURIComponent(jobId)}`)
+}
+
 export async function askQuestion(question, runId) {
   const res = await fetch(`${API_BASE}/qa`, {
     method: 'POST',

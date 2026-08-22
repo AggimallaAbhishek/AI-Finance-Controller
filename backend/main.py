@@ -1,6 +1,8 @@
 import json
+import threading
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -87,6 +89,61 @@ def run_reconcile(req: ReconcileRequest = ReconcileRequest()):
         model=req.model,
     )
     return {"run_id": result["run_id"], "stats": result["stats"]}
+
+
+# In-memory job registry for the async trigger-run flow. A dashboard button
+# firing a synchronous /reconcile (which can take a couple minutes across
+# real LLM calls) has no way to show real progress — only a spinner that
+# looks stuck. This lets the frontend poll actual stage/done/total instead.
+# Deliberately process-local, not persisted: a job is a one-shot progress
+# ticket for a run already durably recorded in audit.db by the time it's
+# "done", not a record of its own that needs to survive a restart.
+JOBS = {}
+_JOBS_LOCK = threading.Lock()
+
+
+def _run_reconcile_job(job_id, req):
+    def on_progress(stage, done, total):
+        with _JOBS_LOCK:
+            JOBS[job_id].update(stage=stage, done=done, total=total)
+
+    try:
+        result = reconcile.run_and_persist(
+            settlement_path=req.settlement_path or DEFAULT_SETTLEMENT,
+            bank_path=req.bank_path or DEFAULT_BANK,
+            outdir=DEFAULT_OUTDIR,
+            db_path=DEFAULT_DB,
+            use_llm=req.use_llm,
+            model=req.model,
+            progress_cb=on_progress,
+        )
+        with _JOBS_LOCK:
+            JOBS[job_id].update(
+                status="done",
+                result={"run_id": result["run_id"], "stats": result["stats"]},
+            )
+    except Exception as e:
+        with _JOBS_LOCK:
+            JOBS[job_id].update(status="error", error=str(e))
+
+
+@app.post("/reconcile/async", status_code=202)
+def start_reconcile_job(req: ReconcileRequest = ReconcileRequest()):
+    job_id = uuid4().hex
+    JOBS[job_id] = {
+        "status": "running", "stage": "starting", "done": 0, "total": 0,
+        "result": None, "error": None,
+    }
+    threading.Thread(target=_run_reconcile_job, args=(job_id, req), daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.get("/reconcile/status/{job_id}")
+def get_reconcile_status(job_id: str):
+    job = JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"No such job_id: '{job_id}'")
+    return job
 
 
 @app.get("/runs")
