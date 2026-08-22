@@ -5,6 +5,7 @@ import ExceptionList from './ExceptionList'
 import MatchList from './MatchList'
 import RunPicker from './RunPicker'
 import ReconcileRunner from './ReconcileRunner'
+import UploadRunner from './UploadRunner'
 import FilterBar, { applyFilters, DEFAULT_FILTERS } from './FilterBar'
 import ChatPanel from './ChatPanel'
 
@@ -16,7 +17,7 @@ export default function App() {
   const [matches, setMatches] = useState([])
   const [exceptions, setExceptions] = useState([])
   const [chatOpen, setChatOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState('exceptions') // exceptions | matches
+  const [activeTab, setActiveTab] = useState('exceptions') // exceptions | matches | upload
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
 
   const refresh = useCallback(async (runId) => {
@@ -55,6 +56,13 @@ export default function App() {
     const { runs: runList } = await getRuns()
     setRuns(runList)
     await selectRun(newRunId, runList)
+  }
+
+  async function handleUploadComplete(newRunId) {
+    await handleReconcileComplete(newRunId)
+    // Switch off the Upload & Run tab so the new run's results are
+    // immediately visible instead of a completed, static progress bar.
+    setActiveTab('exceptions')
   }
 
   // The run's stored stats are a snapshot from when the automated pipeline
@@ -111,6 +119,8 @@ export default function App() {
         <h1>AI Finance Controller</h1>
         <p>No reconciliation run found yet.</p>
         <ReconcileRunner onComplete={handleFirstRun} />
+        <p className="muted">Or upload your own data:</p>
+        <UploadRunner onComplete={handleFirstRun} />
         <p className="muted">
           Or from the command line: <code>python3 reconcile.py --settlement ... --bank ...</code>
         </p>
@@ -158,25 +168,40 @@ export default function App() {
             >
               Matches
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'upload'}
+              className={`tab${activeTab === 'upload' ? ' tab--active' : ''}`}
+              onClick={() => setActiveTab('upload')}
+            >
+              Upload &amp; Run
+            </button>
           </div>
 
-          <FilterBar
-            filters={filters}
-            onChange={setFilters}
-            showSide={activeTab === 'exceptions'}
-            showTier={activeTab === 'matches'}
-            resultCount={activeTab === 'exceptions' ? filteredExceptions.length : filteredMatches.length}
-          />
-
-          {activeTab === 'exceptions' ? (
-            <ExceptionList
-              exceptions={filteredExceptions}
-              allCount={exceptions.length}
-              runId={run.run_id}
-              onResolved={() => refresh(run.run_id)}
-            />
+          {activeTab === 'upload' ? (
+            <UploadRunner onComplete={handleUploadComplete} />
           ) : (
-            <MatchList matches={filteredMatches} runId={run.run_id} />
+            <>
+              <FilterBar
+                filters={filters}
+                onChange={setFilters}
+                showSide={activeTab === 'exceptions'}
+                showTier={activeTab === 'matches'}
+                resultCount={activeTab === 'exceptions' ? filteredExceptions.length : filteredMatches.length}
+              />
+
+              {activeTab === 'exceptions' ? (
+                <ExceptionList
+                  exceptions={filteredExceptions}
+                  allCount={exceptions.length}
+                  runId={run.run_id}
+                  onResolved={() => refresh(run.run_id)}
+                />
+              ) : (
+                <MatchList matches={filteredMatches} runId={run.run_id} />
+              )}
+            </>
           )}
         </main>
 

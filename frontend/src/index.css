@@ -566,6 +566,46 @@ button {
   border-bottom-color: var(--accent);
 }
 
+/* ---------- upload & run tab ---------- */
+
+.upload-runner {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.upload-runner__fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.upload-runner__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.upload-runner__field input[type='file'] {
+  font: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 13px;
+  color: var(--text-h);
+  max-width: 220px;
+}
+
+.upload-runner .reconcile-runner__progress {
+  margin-top: 16px;
+}
+
 /* ---------- filter bar ---------- */
 
 .filter-bar {

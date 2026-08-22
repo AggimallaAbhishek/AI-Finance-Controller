@@ -1,17 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getReconcileStatus } from './api'
 
 const POLL_INTERVAL_MS = 500
 
 // Shared by ReconcileRunner (default-data runs) and UploadRunner (custom
 // CSVs) so the 500ms-poll/completion logic exists in exactly one place.
+// poll/start are plain (unmemoized) functions, same as the original
+// ReconcileRunner component before this was extracted — neither is used
+// in a dependency array, so useCallback would add nothing here.
 export function useReconcileJob(onComplete) {
   const [job, setJob] = useState(null) // null | {status, stage, done, total, result, error}
   const pollRef = useRef(null)
 
   useEffect(() => () => clearTimeout(pollRef.current), [])
 
-  const poll = useCallback(async (jobId) => {
+  async function poll(jobId) {
     try {
       const status = await getReconcileStatus(jobId)
       setJob(status)
@@ -23,9 +26,9 @@ export function useReconcileJob(onComplete) {
     } catch (e) {
       setJob({ status: 'error', error: e.message })
     }
-  }, [onComplete])
+  }
 
-  const start = useCallback(async (startFn) => {
+  async function start(startFn) {
     setJob({ status: 'running', stage: 'starting', done: 0, total: 0 })
     try {
       const { job_id: jobId } = await startFn()
@@ -33,7 +36,7 @@ export function useReconcileJob(onComplete) {
     } catch (e) {
       setJob({ status: 'error', error: e.message })
     }
-  }, [poll])
+  }
 
   return { job, start, running: job?.status === 'running' }
 }
