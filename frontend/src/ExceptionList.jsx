@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getTrace, resolveException } from './api'
 import { downloadCsv } from './csv'
 
@@ -7,34 +7,148 @@ function formatAmount(amount) {
   return `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
 }
 
-function ResolveActions({ recordId, runId, onResolved }) {
+function CheckIcon() {
+  return (
+    <svg className="resolve-confirmation__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M3 8.5L6.5 12L13 4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+// Searchable picker for the resolve-to-match counterpart — sourced from the
+// currently open exceptions on the opposite side, not free text, so a typo
+// can't silently link the wrong record into the audit trail.
+function CounterpartPicker({ candidates, value, onChange, disabled }) {
+  const [open, setOpen] = useState(false)
+  const [highlightIndex, setHighlightIndex] = useState(0)
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const query = value.trim().toLowerCase()
+  const filtered = query
+    ? candidates.filter((c) => (c.settlement_ref || c.bank_ref || '').toLowerCase().includes(query))
+    : candidates
+  const visible = filtered.slice(0, 8)
+
+  function select(candidate) {
+    onChange(candidate.settlement_ref || candidate.bank_ref)
+    setOpen(false)
+  }
+
+  function handleKeyDown(e) {
+    if (!open || visible.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlightIndex((i) => Math.min(i + 1, visible.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlightIndex((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter' && visible[highlightIndex]) {
+      e.preventDefault()
+      select(visible[highlightIndex])
+    } else if (e.key === 'Escape') {
+      setOpen(false)
+    }
+  }
+
+  return (
+    <div className="counterpart-picker" ref={containerRef}>
+      <input
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value)
+          setOpen(true)
+          setHighlightIndex(0)
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        placeholder="Search open exceptions by ID…"
+        required
+        disabled={disabled}
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        autoComplete="off"
+      />
+      {open && visible.length > 0 && (
+        <ul className="counterpart-picker__list" role="listbox">
+          {visible.map((c, i) => {
+            const id = c.settlement_ref || c.bank_ref
+            return (
+              <li key={id} role="option" aria-selected={i === highlightIndex}>
+                <button
+                  type="button"
+                  className={`counterpart-picker__option${i === highlightIndex ? ' counterpart-picker__option--active' : ''}`}
+                  onMouseEnter={() => setHighlightIndex(i)}
+                  onClick={() => select(c)}
+                >
+                  <code>{id}</code>
+                  <span className="muted">{formatAmount(c.amount)} · {c.date || '—'}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {open && query && visible.length === 0 && (
+        <p className="counterpart-picker__empty muted">
+          No open exceptions match "{value}" — you can still enter an ID directly.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function ResolveActions({ recordId, candidates, runId, onResolved }) {
   const [mode, setMode] = useState(null) // null | 'no_match' | 'match'
   const [note, setNote] = useState('')
   const [counterpart, setCounterpart] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  const [justResolved, setJustResolved] = useState(null) // null | 'matched' | 'exception'
 
   async function submit(e) {
     e.preventDefault()
     setSubmitting(true)
     setError(null)
     try {
-      await resolveException(
+      const result = await resolveException(
         recordId,
         { resolution: mode, note, matchedRecordId: mode === 'match' ? counterpart.trim() : undefined },
         runId,
       )
-      // Awaited deliberately: if the resolve itself succeeds but this
-      // refresh fails, the error must still surface here — otherwise the
-      // form is stuck showing "Resolving…" forever with no way to tell
-      // the user, since the row would normally unmount once the parent's
-      // exceptions list updates (every resolution creates a new row id,
-      // so a successful refresh always remounts or removes this row).
+      setJustResolved(result.match_status)
+      // Held briefly so the resolution reads as a real, closed action
+      // instead of the row silently vanishing. Awaited deliberately: if
+      // the resolve itself succeeds but this refresh fails, the error
+      // must still surface here — otherwise the row is stuck showing
+      // "Resolved" forever with no way to tell the user, since the row
+      // would normally unmount once the parent's exceptions list updates.
+      await new Promise((resolve) => setTimeout(resolve, 1100))
       await onResolved()
     } catch (err) {
       setError(err.message)
       setSubmitting(false)
+      setJustResolved(null)
     }
+  }
+
+  if (justResolved) {
+    return (
+      <div className="resolve-confirmation" role="status">
+        <CheckIcon />
+        <span>
+          {justResolved === 'matched' ? 'Recorded as a human-resolved match.' : 'Recorded as a confirmed no-match.'}
+        </span>
+      </div>
+    )
   }
 
   if (mode === null) {
@@ -55,13 +169,7 @@ function ResolveActions({ recordId, runId, onResolved }) {
       {mode === 'match' && (
         <label className="resolve-form__field">
           Counterpart record ID
-          <input
-            value={counterpart}
-            onChange={(e) => setCounterpart(e.target.value)}
-            placeholder="e.g. BTXN1234567890"
-            required
-            disabled={submitting}
-          />
+          <CounterpartPicker candidates={candidates} value={counterpart} onChange={setCounterpart} disabled={submitting} />
         </label>
       )}
       <label className="resolve-form__field">
@@ -91,7 +199,7 @@ function ResolveActions({ recordId, runId, onResolved }) {
   )
 }
 
-function ExceptionRow({ exception, runId, onResolved }) {
+function ExceptionRow({ exception, allExceptions, runId, onResolved }) {
   const [expanded, setExpanded] = useState(false)
   const [trace, setTrace] = useState(null)
   const [error, setError] = useState(null)
@@ -100,6 +208,10 @@ function ExceptionRow({ exception, runId, onResolved }) {
   const side = exception.settlement_ref ? 'settlement' : 'bank'
   const recordId = exception.settlement_ref || exception.bank_ref
   const reviewed = exception.tier === 'human'
+
+  const candidates = allExceptions.filter((e) =>
+    e.id !== exception.id && (side === 'settlement' ? e.bank_ref && !e.settlement_ref : e.settlement_ref && !e.bank_ref)
+  )
 
   async function toggle() {
     const next = !expanded
@@ -142,7 +254,8 @@ function ExceptionRow({ exception, runId, onResolved }) {
       {expanded && (
         <div className="exception-row__detail" aria-live="polite">
           {loading && <p className="muted">Loading source record…</p>}
-          {error && <p className="error-text">Couldn’t load detail: {error}</p>}
+          {error && <p className="error-text">Couldn't load detail: {error}</p>}
+          <p className="exception-row__reason-full">{exception.reason}</p>
           {record && (
             <dl className="detail-grid">
               <div>
@@ -170,14 +283,14 @@ function ExceptionRow({ exception, runId, onResolved }) {
               )}
             </dl>
           )}
-          <ResolveActions recordId={recordId} runId={runId} onResolved={onResolved} />
+          <ResolveActions recordId={recordId} candidates={candidates} runId={runId} onResolved={onResolved} />
         </div>
       )}
     </li>
   )
 }
 
-export default function ExceptionList({ exceptions, allCount, runId, onResolved }) {
+export default function ExceptionList({ exceptions, allExceptions, allCount, runId, onResolved }) {
   function exportCsv() {
     downloadCsv(`exceptions-${runId}.csv`, exceptions, [
       { label: 'side', value: (e) => (e.settlement_ref ? 'settlement' : 'bank') },
@@ -206,7 +319,7 @@ export default function ExceptionList({ exceptions, allCount, runId, onResolved 
       ) : (
         <ul className="exception-list__items">
           {exceptions.map((e) => (
-            <ExceptionRow key={e.id} exception={e} runId={runId} onResolved={onResolved} />
+            <ExceptionRow key={e.id} exception={e} allExceptions={allExceptions} runId={runId} onResolved={onResolved} />
           ))}
         </ul>
       )}

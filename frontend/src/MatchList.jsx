@@ -57,6 +57,7 @@ function MatchRow({ match, runId }) {
         <div className="exception-row__detail" aria-live="polite">
           {loading && <p className="muted">Loading source records…</p>}
           {error && <p className="error-text">Couldn't load detail: {error}</p>}
+          <p className="exception-row__reason-full">{match.reason}</p>
           {settlementRecord && (
             <dl className="detail-grid">
               <div>

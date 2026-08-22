@@ -14,7 +14,7 @@ export default function ReconcileProgress({ job }) {
         <div className="reconcile-runner__bar">
           <div
             className="reconcile-runner__bar-fill"
-            style={{ width: job.total > 0 ? `${Math.round((job.done / job.total) * 100)}%` : '8%' }}
+            style={{ transform: `scaleX(${job.total > 0 ? job.done / job.total : 0.08})` }}
           />
         </div>
         {job.total > 0 && (

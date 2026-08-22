@@ -194,6 +194,7 @@ export default function App() {
               {activeTab === 'exceptions' ? (
                 <ExceptionList
                   exceptions={filteredExceptions}
+                  allExceptions={exceptions}
                   allCount={exceptions.length}
                   runId={run.run_id}
                   onResolved={() => refresh(run.run_id)}
