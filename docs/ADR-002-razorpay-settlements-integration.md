@@ -1,6 +1,8 @@
 # ADR-002: Razorpay Settlements API loader, scheduled reconciliation, and dashboard file upload
 
-**Status:** Accepted (design) — implementation pending
+**Status:** Implemented — Razorpay loader and scheduled-reconciliation script are code-complete
+and unit-tested but unverified against a real Razorpay account (see honesty note below);
+dashboard file upload is implemented, tested, and verified live end-to-end in a real browser.
 **Builds on:** ADR-001 (hybrid rules + LLM reconciliation), project_plan_v2.md Phase 12
 
 ## Context

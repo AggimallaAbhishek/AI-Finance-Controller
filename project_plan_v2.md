@@ -142,11 +142,17 @@ unresolved." This phase closes that loop.
   reconciliation run (real Ollama calls) end-to-end from the dashboard
   with live progress — all without touching curl.
 
-### Phase 12 — New data capabilities
+### Phase 12 — New data capabilities — CODE-COMPLETE, Razorpay path unverified live
 
 Higher uncertainty than Phases 9–11 — scope depends on what's actually
-available (Razorpay sandbox access, credentials, rate limits). Treat this
-phase's scope as provisional until that's confirmed.
+available (Razorpay sandbox access, credentials, rate limits). No
+credentials were available when this phase was built (see
+docs/ADR-002) — the Razorpay loader and scheduled-reconciliation script
+are implemented and unit-tested against Razorpay's real, observed API
+contract (verified without credentials — see ADR-002), but the exit
+check below remains unverified until real credentials exist. A third
+capability, dashboard file upload, was added during this phase (user
+request) and *is* fully verified live.
 
 - **Razorpay Settlements API integration** — a new loader alongside
   `load_settlements()` (CSV) that fetches real settlement data via
@@ -154,16 +160,23 @@ phase's scope as provisional until that's confirmed.
   matching engine itself doesn't change. Bank statement ingestion stays
   CSV-based (or gains a parser for a specific bank's real export format)
   since there's no single "bank API" equivalent.
-- **Scheduled reconciliation** — a recurring job (daily, e.g.) that runs
-  the pipeline automatically against fresh data and could push a
-  digest (exception count, match rate delta) — worth scoping against
-  what the `schedule` skill already provides before building custom
-  cron infrastructure.
+- **Scheduled reconciliation** — `backend/scheduled_reconcile.py`, a
+  standalone script meant to be invoked by an external scheduler (cron,
+  launchd, GitHub Actions cron) that runs the pipeline and prints a
+  match-rate-delta digest. See ADR-002 for why an in-process scheduler
+  was rejected in favor of this.
+- **Dashboard file upload** (added, not in the original plan) — a
+  user can upload their own settlement/bank CSVs from the dashboard's
+  "Upload & Run" tab and trigger a run against them, via
+  `POST /reconcile/upload`. Verified live end-to-end in a real browser.
 - **Exit check:** the engine produces the same honestly-reported match
   rate / exception list / audit trail against real Razorpay data as it
   does against synthetic data — proving the matching logic itself
   generalizes beyond the synthetic generator's data shapes, not just
-  beyond one synthetic seed (which Phase 7 already proved).
+  beyond one synthetic seed (which Phase 7 already proved). **Not yet
+  verified** — remains blocked on real Razorpay credentials; see
+  docs/ADR-002's Consequences section for what verification looks like
+  once they exist.
 
 ---
 

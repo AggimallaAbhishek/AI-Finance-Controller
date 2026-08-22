@@ -147,7 +147,8 @@ Interactive API docs at http://localhost:8000/docs. Endpoints:
 |---|---|
 | `GET /health` | liveness check |
 | `POST /reconcile` | run the engine synchronously (body: `settlement_path`, `bank_path`, `use_llm`, `model` — all optional) |
-| `POST /reconcile/async` | same, but returns `{job_id}` immediately; poll `GET /reconcile/status/{job_id}` for real `stage`/`done`/`total` progress and the eventual `result` — what the dashboard's "Run reconciliation" button uses |
+| `POST /reconcile/async` | same, but returns `{job_id}` immediately; poll `GET /reconcile/status/{job_id}` for real `stage`/`done`/`total` progress and the eventual `result` — what the dashboard's "Run reconciliation" button uses. Body also accepts `settlement_source: "razorpay"` to pull live settlements instead of a CSV (needs `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` in the environment — see below) |
+| `POST /reconcile/upload` | multipart upload (`settlement_file`, `bank_file`) — validates both via the real loaders and starts an async job exactly like `/reconcile/async`; what the dashboard's "Upload & Run" tab uses |
 | `GET /runs` | list all reconciliation runs |
 | `GET /matches` | matched records for a run (`?run_id=`, default: latest) |
 | `GET /exceptions` | exception records for a run |
@@ -183,10 +184,12 @@ either Matches or Exceptions (click a row to lazy-load its full
 source-record trace), a shared filter bar (amount range, date range,
 settlement/bank side, confidence tier), CSV export of whatever's
 currently filtered, a "Run reconciliation" button with real progress
-(not a spinner — see `POST /reconcile/async` above), and a chat panel
-wired to `/qa` with Markdown-rendered answers and source-record
-citations. Responsive — the chat becomes a slide-over panel below
-~900px. Set `VITE_API_BASE` to point at a non-default backend URL.
+(not a spinner — see `POST /reconcile/async` above), an "Upload & Run"
+tab to run the pipeline against your own settlement/bank CSVs from the
+browser instead of the server's default files, and a chat panel wired
+to `/qa` with Markdown-rendered answers and source-record citations.
+Responsive — the chat becomes a slide-over panel below ~900px. Set
+`VITE_API_BASE` to point at a non-default backend URL.
 
 **Human-in-the-loop**: an expanded exception row has two resolution
 actions — "Confirm no match" (note only) or "Link to a record" (a
@@ -213,14 +216,29 @@ Model defaults to `gpt-oss:20b-cloud`; override with `--model` or the
 automatically (3 attempts, exponential backoff) before falling back to an
 honest exception.
 
+**Razorpay Settlements API** (in place, unverified against a live
+account — see `docs/ADR-002`): `--source razorpay` on `reconcile.py`
+fetches settlements from Razorpay's API instead of a CSV, mapped into
+the same `Settlement` shape. Needs `RAZORPAY_KEY_ID`/
+`RAZORPAY_KEY_SECRET` in the environment (a `.env` file in `backend/`
+works, via `python-dotenv`). Bank statements stay CSV-only.
+
+**Scheduled reconciliation**: `python3 scheduled_reconcile.py` runs one
+reconciliation and prints a JSON digest (match rate, delta vs. the
+previous run, exception count) — meant to be invoked by cron/launchd/a
+CI scheduled workflow, not run continuously itself. Accepts the same
+`--source`/`--no-llm`/`--model` flags as `reconcile.py`.
+
 ## Repo layout
 
 ```
 data/              synthetic data generator, seed-42 dev batch, held-out batch
 backend/           reconcile.py (engine), audit.py (trail), qa_agent.py (Ollama agent),
-                   llm_matcher.py, main.py (FastAPI), audit_cli.py (inspector CLI), tests/
+                   llm_matcher.py, razorpay_client.py (Razorpay API loader), main.py (FastAPI),
+                   scheduled_reconcile.py (cron-friendly digest script), audit_cli.py
+                   (inspector CLI), tests/
 frontend/          React dashboard (Vite)
-docs/              ADR, glossary, build-challenges log, Phase 7 held-out test report,
+docs/              ADRs, glossary, build-challenges log, Phase 7 held-out test report,
                    demo script
 project_plan.md    the v1.0 phase-by-phase build plan this repo followed
 project_plan_v2.md the v2.0 plan for what's next

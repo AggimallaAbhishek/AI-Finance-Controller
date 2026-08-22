@@ -365,6 +365,40 @@ survive) plus the full `pytest` suite (62 passed) and a clean
 
 ---
 
+### Phase 12 — two same-labeled buttons fooled test automation, not just a human
+
+**Issue:** live-testing the new "Upload & Run" tab, a blind
+`document.querySelectorAll('button').find(b => b.textContent.includes('Run reconciliation'))`
+(used to bypass an earlier coordinate-click miss) silently clicked the
+*toolbar's* `ReconcileRunner` button instead of the intended
+`UploadRunner` button in the tab content — both were labeled exactly
+"Run reconciliation", and `.find()` returns the first DOM match, which
+was the toolbar's. This fired a real reconciliation against the
+server's default CSVs while genuinely uploaded test files sat unused,
+and cost real debugging time chasing why "nothing happened" (network
+tracking briefly appeared to show zero requests for an unrelated
+reason, compounding the confusion) before comparing `window.fetch` logs
+against the actual endpoint hit (`/reconcile/async`, not
+`/reconcile/upload`) revealed the mismatch.
+
+**Root cause:** not an application bug — scoping the click to
+`.upload-runner button.reconcile-runner__button` instead of a
+page-wide `querySelectorAll` immediately hit the right element and
+the whole upload flow worked correctly end-to-end (upload → validate →
+async job → poll → complete → auto-switch off the Upload & Run tab →
+correct match/exception rows for the uploaded data). But two buttons
+on one page sharing identical, non-specific text ("Run reconciliation")
+with no further context is a real clarity risk for a human user too,
+not just for blind DOM queries — confirmed by the fact that it fooled
+this session's own click targeting first.
+
+**Fix:** relabeled `UploadRunner`'s button from "Run reconciliation" to
+"Run on these files" — cheap, removes the ambiguity, and needed no
+other application changes since the underlying flow was already
+correct.
+
+---
+
 ## Template for new entries
 
 ```

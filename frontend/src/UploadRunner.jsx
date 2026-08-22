@@ -39,7 +39,7 @@ export default function UploadRunner({ onComplete }) {
           onClick={run}
           disabled={running || !settlementFile || !bankFile}
         >
-          {running ? 'Running…' : 'Run reconciliation'}
+          {running ? 'Running…' : 'Run on these files'}
         </button>
       </div>
       <ReconcileProgress job={job} />
