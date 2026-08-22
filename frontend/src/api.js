@@ -42,6 +42,18 @@ export function getReconcileStatus(jobId) {
   return request(`/reconcile/status/${encodeURIComponent(jobId)}`)
 }
 
+export async function uploadAndReconcile(settlementFile, bankFile) {
+  const formData = new FormData()
+  formData.append('settlement_file', settlementFile)
+  formData.append('bank_file', bankFile)
+  const res = await fetch(`${API_BASE}/reconcile/upload`, { method: 'POST', body: formData })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `${res.status} ${res.statusText}`)
+  }
+  return res.json()
+}
+
 export async function askQuestion(question, runId) {
   const res = await fetch(`${API_BASE}/qa`, {
     method: 'POST',

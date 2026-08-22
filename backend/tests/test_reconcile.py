@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 
 import reconcile
-from reconcile import Settlement, BankEntry, rule_tier, run_reconciliation
+from reconcile import Settlement, BankEntry, rule_tier, run_reconciliation, run_and_persist
 
 
 def settlement(id="STL1", ref="RZP1", amount="1000.00", d=date(2026, 7, 10), status="settled"):
@@ -166,3 +166,46 @@ def test_rule_tier_prefers_closer_amount_over_closer_date():
         [s], [close_date_off_amount, far_date_exact_amount], use_llm=False
     )
     assert matches_reversed[0]["bank_ref"] == "BTXN_FAR"
+
+
+def _write_bank_csv(path):
+    path.write_text(
+        "txn_id,reference_id,amount,date,narration\n"
+        "BTXN1,RZP1,100.00,2026-07-01,payment ref RZP1\n"
+    )
+
+
+def test_run_and_persist_defaults_to_csv_source(tmp_path):
+    settlement_path = tmp_path / "settlement.csv"
+    settlement_path.write_text(
+        "settlement_id,reference_id,amount,date,status\n"
+        "STL1,RZP1,100.00,2026-07-01,settled\n"
+    )
+    bank_path = tmp_path / "bank_statement.csv"
+    _write_bank_csv(bank_path)
+
+    result = run_and_persist(settlement_path, bank_path, outdir=tmp_path / "output")
+    assert result["stats"]["matched"] == 1
+    assert result["matches"][0]["settlement_ref"] == "STL1"
+
+
+def test_run_and_persist_razorpay_source_never_touches_settlement_csv(tmp_path, monkeypatch):
+    # settlement_path is deliberately never passed — the razorpay source
+    # must not require it.
+    bank_path = tmp_path / "bank_statement.csv"
+    _write_bank_csv(bank_path)
+
+    def fake_load_settlements_from_razorpay(key_id, key_secret, from_ts=None, to_ts=None):
+        assert key_id == "test-key"
+        assert key_secret == "test-secret"
+        return [Settlement("setl_1", "RZP1", Decimal("100.00"), date(2026, 7, 1), "processed")]
+
+    import razorpay_client
+    monkeypatch.setattr(razorpay_client, "load_settlements_from_razorpay", fake_load_settlements_from_razorpay)
+
+    result = run_and_persist(
+        bank_path=bank_path, outdir=tmp_path / "output",
+        settlement_source="razorpay", razorpay_key_id="test-key", razorpay_key_secret="test-secret",
+    )
+    assert result["stats"]["matched"] == 1
+    assert result["matches"][0]["settlement_ref"] == "setl_1"

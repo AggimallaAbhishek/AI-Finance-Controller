@@ -190,8 +190,8 @@ def test_async_reconcile_reports_real_progress_and_completes(client, monkeypatch
     # just run_and_persist in isolation, which test_reconcile.py covers).
     test_client, _ = client
 
-    def fake_run_and_persist(settlement_path, bank_path, outdir=None, db_path=None,
-                              use_llm=True, model=None, progress_cb=None):
+    def fake_run_and_persist(settlement_path=None, bank_path=None, outdir=None, db_path=None,
+                              use_llm=True, model=None, progress_cb=None, **kwargs):
         if progress_cb:
             progress_cb("rules", 1, 2)
             progress_cb("rules", 2, 2)
@@ -230,3 +230,117 @@ def test_reconcile_status_404s_for_unknown_job(client):
     test_client, _ = client
     resp = test_client.get("/reconcile/status/does-not-exist")
     assert resp.status_code == 404
+
+
+def test_async_reconcile_with_razorpay_source_400s_without_credentials(client, monkeypatch):
+    test_client, _ = client
+    monkeypatch.delenv("RAZORPAY_KEY_ID", raising=False)
+    monkeypatch.delenv("RAZORPAY_KEY_SECRET", raising=False)
+
+    resp = test_client.post("/reconcile/async", json={"settlement_source": "razorpay"})
+    assert resp.status_code == 400
+    assert "RAZORPAY_KEY_ID" in resp.json()["detail"]
+
+
+def test_async_reconcile_with_razorpay_source_passes_credentials_through(client, monkeypatch):
+    test_client, _ = client
+    monkeypatch.setenv("RAZORPAY_KEY_ID", "test-key")
+    monkeypatch.setenv("RAZORPAY_KEY_SECRET", "test-secret")
+    captured = {}
+
+    def fake_run_and_persist(settlement_path=None, bank_path=None, outdir=None, db_path=None,
+                              use_llm=True, model=None, progress_cb=None, **kwargs):
+        captured.update(kwargs)
+        if progress_cb:
+            progress_cb("persisting", 1, 1)
+        return {"run_id": "razorpay-run-1", "stats": {"match_rate": 1.0}}
+
+    monkeypatch.setattr(main.reconcile, "run_and_persist", fake_run_and_persist)
+
+    resp = test_client.post("/reconcile/async", json={"settlement_source": "razorpay"})
+    assert resp.status_code == 202
+    final = _poll_job_until_done(test_client, resp.json()["job_id"])
+    assert final["status"] == "done"
+    assert captured["razorpay_key_id"] == "test-key"
+    assert captured["razorpay_key_secret"] == "test-secret"
+
+
+SETTLEMENT_CSV = b"settlement_id,reference_id,amount,date,status\nSTL1,RZP1,100.00,2026-07-01,settled\n"
+BANK_CSV = b"txn_id,reference_id,amount,date,narration\nBTXN1,RZP1,100.00,2026-07-01,n\n"
+
+
+def test_upload_reconcile_happy_path(client, monkeypatch, tmp_path):
+    test_client, _ = client
+    monkeypatch.setattr(main, "UPLOADS_DIR", tmp_path / "uploads")
+    captured = {}
+
+    def fake_run_and_persist(settlement_path=None, bank_path=None, outdir=None, db_path=None,
+                              use_llm=True, model=None, progress_cb=None, **kwargs):
+        captured["settlement_path"] = settlement_path
+        if progress_cb:
+            progress_cb("persisting", 1, 1)
+        return {"run_id": "upload-run-1", "stats": {"match_rate": 1.0}}
+
+    monkeypatch.setattr(main.reconcile, "run_and_persist", fake_run_and_persist)
+
+    resp = test_client.post(
+        "/reconcile/upload",
+        files={
+            "settlement_file": ("settlement.csv", SETTLEMENT_CSV, "text/csv"),
+            "bank_file": ("bank_statement.csv", BANK_CSV, "text/csv"),
+        },
+    )
+    assert resp.status_code == 202
+    final = _poll_job_until_done(test_client, resp.json()["job_id"])
+    assert final["status"] == "done"
+    assert final["result"]["run_id"] == "upload-run-1"
+    assert "uploads" in captured["settlement_path"]
+
+
+def test_upload_rejects_settlement_csv_missing_a_required_column(client, monkeypatch, tmp_path):
+    test_client, _ = client
+    monkeypatch.setattr(main, "UPLOADS_DIR", tmp_path / "uploads")
+    missing_reference_id = b"settlement_id,amount,date,status\nSTL1,100.00,2026-07-01,settled\n"
+
+    resp = test_client.post(
+        "/reconcile/upload",
+        files={
+            "settlement_file": ("settlement.csv", missing_reference_id, "text/csv"),
+            "bank_file": ("bank_statement.csv", BANK_CSV, "text/csv"),
+        },
+    )
+    assert resp.status_code == 400
+    assert "settlement file" in resp.json()["detail"]
+    assert "reference_id" in resp.json()["detail"]
+
+
+def test_upload_rejects_bank_csv_with_unparseable_amount(client, monkeypatch, tmp_path):
+    test_client, _ = client
+    monkeypatch.setattr(main, "UPLOADS_DIR", tmp_path / "uploads")
+    bad_amount = b"txn_id,reference_id,amount,date,narration\nBTXN1,RZP1,not-a-number,2026-07-01,n\n"
+
+    resp = test_client.post(
+        "/reconcile/upload",
+        files={
+            "settlement_file": ("settlement.csv", SETTLEMENT_CSV, "text/csv"),
+            "bank_file": ("bank_statement.csv", bad_amount, "text/csv"),
+        },
+    )
+    assert resp.status_code == 400
+    assert "bank statement file" in resp.json()["detail"]
+
+
+def test_upload_rejects_file_over_size_limit(client, monkeypatch, tmp_path):
+    test_client, _ = client
+    monkeypatch.setattr(main, "UPLOADS_DIR", tmp_path / "uploads")
+    monkeypatch.setattr(main, "MAX_UPLOAD_BYTES", 10)
+
+    resp = test_client.post(
+        "/reconcile/upload",
+        files={
+            "settlement_file": ("settlement.csv", SETTLEMENT_CSV, "text/csv"),
+            "bank_file": ("bank_statement.csv", BANK_CSV, "text/csv"),
+        },
+    )
+    assert resp.status_code == 400
+    assert "exceeds" in resp.json()["detail"]

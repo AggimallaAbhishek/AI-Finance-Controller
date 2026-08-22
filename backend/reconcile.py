@@ -332,20 +332,46 @@ def write_csv(path, rows, fieldnames):
         writer.writerows(rows)
 
 
-def run_and_persist(settlement_path, bank_path, outdir=None, db_path=None,
-                     use_llm=True, model=None, progress_cb=None):
+def run_and_persist(settlement_path=None, bank_path=None, outdir=None, db_path=None,
+                     use_llm=True, model=None, progress_cb=None,
+                     settlement_source="csv", razorpay_key_id=None, razorpay_key_secret=None,
+                     razorpay_from_ts=None, razorpay_to_ts=None):
     """Load the batch, run reconciliation, write matches/exceptions.csv, and
     persist the full audit trail to SQLite. Shared by the CLI (below) and
     the FastAPI /reconcile route, so both go through the exact same path.
     Returns {"run_id", "stats", "matches", "exceptions", "outdir", "db_path"}.
+
+    settlement_source="csv" (default) loads settlement_path as a CSV via
+    load_settlements() — existing behavior, completely unchanged.
+    settlement_source="razorpay" instead fetches live settlements via
+    razorpay_client.load_settlements_from_razorpay(), mapped into the same
+    Settlement dataclass, so nothing below this point needs to know which
+    source produced its input. Bank statements stay CSV-only either way —
+    see docs/ADR-002 for why.
     """
-    settlement_path = Path(settlement_path)
     bank_path = Path(bank_path)
-    outdir = Path(outdir) if outdir else (settlement_path.parent / "output")
+    if outdir:
+        outdir = Path(outdir)
+    elif settlement_source == "csv":
+        outdir = Path(settlement_path).parent / "output"
+    else:
+        outdir = bank_path.parent / "output"
     outdir.mkdir(parents=True, exist_ok=True)
     db_path = Path(db_path) if db_path else (outdir / "audit.db")
 
-    settlements = load_settlements(settlement_path)
+    if settlement_source == "razorpay":
+        # Deferred import: razorpay_client imports Settlement from this
+        # module, so a top-level import here would be circular. By call
+        # time reconcile is already fully loaded, so it's safe.
+        from razorpay_client import load_settlements_from_razorpay
+        settlements = load_settlements_from_razorpay(
+            razorpay_key_id, razorpay_key_secret,
+            from_ts=razorpay_from_ts, to_ts=razorpay_to_ts,
+        )
+        settlement_path = f"razorpay:{razorpay_from_ts or ''}-{razorpay_to_ts or ''}"
+    else:
+        settlement_path = Path(settlement_path)
+        settlements = load_settlements(settlement_path)
     bank_entries = load_bank_entries(bank_path)
 
     matches, exceptions, audit_entries, stats = run_reconciliation(
@@ -384,12 +410,25 @@ def main():
                          help="audit DB path (default: <outdir>/audit.db)")
     parser.add_argument("--no-llm", action="store_true", help="skip the LLM tier (rules only)")
     parser.add_argument("--model", default=None, help=f"Ollama model (default: {DEFAULT_MODEL})")
+    parser.add_argument("--source", choices=["csv", "razorpay"], default="csv",
+                         help="settlement data source (default: csv). razorpay reads "
+                              "RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET from the environment "
+                              "and ignores --settlement.")
     args = parser.parse_args()
 
-    result = run_and_persist(
-        args.settlement, args.bank, outdir=args.outdir, db_path=args.db,
-        use_llm=not args.no_llm, model=args.model,
-    )
+    if args.source == "razorpay":
+        result = run_and_persist(
+            bank_path=args.bank, outdir=args.outdir, db_path=args.db,
+            use_llm=not args.no_llm, model=args.model,
+            settlement_source="razorpay",
+            razorpay_key_id=os.environ.get("RAZORPAY_KEY_ID"),
+            razorpay_key_secret=os.environ.get("RAZORPAY_KEY_SECRET"),
+        )
+    else:
+        result = run_and_persist(
+            args.settlement, args.bank, outdir=args.outdir, db_path=args.db,
+            use_llm=not args.no_llm, model=args.model,
+        )
 
     print(json.dumps(result["stats"], indent=2))
     print(f"\nrun_id: {result['run_id']}")
