@@ -78,7 +78,14 @@ export default function App() {
   }, [run, matches, exceptions])
 
   const filteredExceptions = useMemo(
-    () => applyFilters(exceptions, filters, { side: (e) => (e.settlement_ref ? 'settlement' : 'bank') }),
+    () => applyFilters(exceptions, filters, {
+      side: (e) => (e.settlement_ref ? 'settlement' : 'bank'),
+      // Tier chips are only ever shown on the Matches tab (exceptions have
+      // no confidence tier — reconcile.py never sets one on an exception
+      // row), so a tier picked while on Matches must never suppress
+      // exceptions once the user switches tabs.
+      ignoreTiers: true,
+    }),
     [exceptions, filters],
   )
   const filteredMatches = useMemo(() => applyFilters(matches, filters), [matches, filters])

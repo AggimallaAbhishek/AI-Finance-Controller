@@ -332,6 +332,39 @@ feature usefully rather than needing cleanup.
 
 ---
 
+### Phase 11 — Matches-tab tier filter silently emptied the Exceptions tab
+
+**Issue:** running a systematic-debugging pass over the Phase 11 dashboard
+files (no failing test or crash — just a read-through of `FilterBar.jsx`
+and `App.jsx` looking for logic bugs) surfaced a real, reproducible one:
+`filters.tiers` is shared React state between the Matches and Exceptions
+tabs. `FilterBar` only *hides* the tier chips when `showTier` is false on
+the Exceptions tab — it never stopped `applyFilters` from still applying
+`filters.tiers` to exception rows. Exceptions always carry
+`confidence: null` (`reconcile.py` never sets a confidence on an
+exception), so picking any tier chip while on Matches, then switching to
+Exceptions, made `filters.tiers.includes(null)` false for every row —
+the Exceptions tab silently rendered "No exceptions match these filters"
+even with real, unresolved exceptions present. Confirmed in isolation
+with a standalone reproduction of `applyFilters` (0 of 2 exceptions
+survived with a leftover tier filter) before touching any code.
+
+The `side` filter avoided this exact trap already: `filteredMatches` is
+computed by calling `applyFilters(matches, filters)` *without* a `side`
+accessor, so the side filter is structurally inert for Matches. The tier
+filter had no equivalent guard for Exceptions — that asymmetry was the
+root cause, not a one-off typo.
+
+**Fix:** added an `ignoreTiers` option to `applyFilters` (mirroring the
+existing optional `side` accessor pattern) and passed
+`ignoreTiers: true` when computing `filteredExceptions` in `App.jsx`, so
+a Matches-tab tier selection can never suppress Exceptions-tab rows.
+Verified via the same standalone reproduction (now 2 of 2 exceptions
+survive) plus the full `pytest` suite (62 passed) and a clean
+`vite build`.
+
+---
+
 ## Template for new entries
 
 ```

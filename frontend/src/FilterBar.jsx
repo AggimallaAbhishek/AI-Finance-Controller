@@ -97,7 +97,7 @@ export default function FilterBar({ filters, onChange, showSide, showTier, resul
   )
 }
 
-export function applyFilters(rows, filters, { side } = {}) {
+export function applyFilters(rows, filters, { side, ignoreTiers } = {}) {
   return rows.filter((r) => {
     const amount = r.amount !== undefined && r.amount !== null ? Number(r.amount) : null
     if (filters.amountMin && (amount === null || amount < Number(filters.amountMin))) return false
@@ -105,7 +105,7 @@ export function applyFilters(rows, filters, { side } = {}) {
     if (filters.dateFrom && (!r.date || r.date < filters.dateFrom)) return false
     if (filters.dateTo && (!r.date || r.date > filters.dateTo)) return false
     if (filters.side !== 'all' && side && side(r) !== filters.side) return false
-    if (filters.tiers.length > 0 && !filters.tiers.includes(r.confidence)) return false
+    if (!ignoreTiers && filters.tiers.length > 0 && !filters.tiers.includes(r.confidence)) return false
     return true
   })
 }
