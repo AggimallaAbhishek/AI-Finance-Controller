@@ -440,6 +440,272 @@ button {
   cursor: not-allowed;
 }
 
+/* ---------- toolbar: run picker + reconcile runner ---------- */
+
+.dashboard__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.run-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.run-picker__select {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  max-width: 320px;
+}
+
+.run-trend {
+  width: 120px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.run-trend__bar {
+  fill: var(--border);
+}
+
+.run-trend__bar--latest {
+  fill: var(--accent);
+}
+
+.reconcile-runner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.reconcile-runner__button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.reconcile-runner__button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.reconcile-runner__progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.reconcile-runner__stage {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.reconcile-runner__bar {
+  width: 140px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.reconcile-runner__bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.reconcile-runner__count {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- tabs ---------- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 4px;
+  margin-right: 20px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tab--active {
+  color: var(--text-h);
+  border-bottom-color: var(--accent);
+}
+
+/* ---------- filter bar ---------- */
+
+.filter-bar {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.filter-bar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.filter-bar__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.filter-bar__field input,
+.filter-bar__field select {
+  font: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  width: 128px;
+}
+
+.filter-bar__count {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.filter-bar__clear {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.filter-bar__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.filter-chip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.filter-chip--active {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- list header / export ---------- */
+
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.list-header h2 {
+  margin-bottom: 0;
+}
+
+.export-button {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.export-button:hover:not(:disabled) {
+  border-color: var(--accent-border);
+}
+
+.export-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.exception-row__amount {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-h);
+}
+
+.tier-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 /* ---------- chat panel ---------- */
 
 .chat-panel {
@@ -669,6 +935,27 @@ button {
     grid-template-columns: 1fr;
     padding: 16px;
     padding-bottom: 88px;
+  }
+
+  .dashboard__toolbar {
+    padding: 12px 16px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .run-picker {
+    flex-wrap: wrap;
+  }
+
+  .run-picker__select {
+    max-width: none;
+    flex: 1;
+  }
+
+  .filter-bar__count {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
   }
 
   .stats-header {

@@ -77,6 +77,19 @@ export default function App() {
     }
   }, [run, matches, exceptions])
 
+  const filteredExceptions = useMemo(
+    () => applyFilters(exceptions, filters, { side: (e) => (e.settlement_ref ? 'settlement' : 'bank') }),
+    [exceptions, filters],
+  )
+  const filteredMatches = useMemo(() => applyFilters(matches, filters), [matches, filters])
+
+  async function handleFirstRun(newRunId) {
+    const { runs: runList } = await getRuns()
+    setRuns(runList)
+    await selectRun(newRunId, runList)
+    setStatus('ready')
+  }
+
   if (status === 'loading') {
     return (
       <main className="state-screen">
@@ -90,8 +103,9 @@ export default function App() {
       <main className="state-screen">
         <h1>AI Finance Controller</h1>
         <p>No reconciliation run found yet.</p>
+        <ReconcileRunner onComplete={handleFirstRun} />
         <p className="muted">
-          Run the pipeline first: <code>python3 reconcile.py --settlement ... --bank ...</code>
+          Or from the command line: <code>python3 reconcile.py --settlement ... --bank ...</code>
         </p>
       </main>
     )
@@ -111,13 +125,52 @@ export default function App() {
     <div className="dashboard">
       <StatsHeader run={run} stats={liveStats} />
 
+      <div className="dashboard__toolbar">
+        <RunPicker runs={runs} currentRunId={run.run_id} onSelect={selectRun} />
+        <ReconcileRunner onComplete={handleReconcileComplete} />
+      </div>
+
       <div className="dashboard__body">
         <main className="dashboard__main">
-          <ExceptionList
-            exceptions={exceptions}
-            runId={run.run_id}
-            onResolved={() => refresh(run.run_id)}
+          <div className="tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'exceptions'}
+              className={`tab${activeTab === 'exceptions' ? ' tab--active' : ''}`}
+              onClick={() => setActiveTab('exceptions')}
+            >
+              Exceptions
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'matches'}
+              className={`tab${activeTab === 'matches' ? ' tab--active' : ''}`}
+              onClick={() => setActiveTab('matches')}
+            >
+              Matches
+            </button>
+          </div>
+
+          <FilterBar
+            filters={filters}
+            onChange={setFilters}
+            showSide={activeTab === 'exceptions'}
+            showTier={activeTab === 'matches'}
+            resultCount={activeTab === 'exceptions' ? filteredExceptions.length : filteredMatches.length}
           />
+
+          {activeTab === 'exceptions' ? (
+            <ExceptionList
+              exceptions={filteredExceptions}
+              allCount={exceptions.length}
+              runId={run.run_id}
+              onResolved={() => refresh(run.run_id)}
+            />
+          ) : (
+            <MatchList matches={filteredMatches} runId={run.run_id} />
+          )}
         </main>
 
         <div className={`dashboard__chat${chatOpen ? ' dashboard__chat--open' : ''}`}>
