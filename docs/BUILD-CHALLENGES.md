@@ -285,6 +285,51 @@ All fixes covered by new tests (`test_audit_resolve_race.py`,
 `test_qa_agent.py`, plus additions to `test_audit_resolve.py`) —
 55 tests total, full suite green, live end-to-end re-verification clean.
 
+## Phase 11 — a phantom double reconciliation run during live testing
+
+**Issue:** while live-testing the new "Run reconciliation" button
+end-to-end, one intentional click produced a run as expected — but a
+few minutes later, after several unrelated actions (switching runs via
+the picker, clicking the Exceptions tab, changing filters), a *second*
+reconciliation run appeared in `GET /runs` that was never explicitly
+requested. Only one deliberate button click had been made. Before
+assuming this was a double-submit bug in `ReconcileRunner` (a classic
+class of bug: a button that isn't disabled fast enough, or an effect
+that re-fires), it was reproduced in isolation rather than patched on
+suspicion.
+
+**Investigation:** counted `POST /reconcile/async` calls in the backend
+log directly rather than trusting UI state — exactly 2 for 1 intended
+click, ruling out "it never actually double-posted, the UI just looked
+odd." Checked for a second dev server process (`ps aux`) — none;
+checked for a `useEffect` or other non-click path to `start()` in
+`ReconcileRunner.jsx` — none exists, `start()` is only reachable from
+the button's `onClick`. Reloaded the page fresh and fired a single
+programmatic `.click()` via `javascript_tool` (bypassing coordinate-
+based clicking entirely) with the backend log's POST count checked
+immediately before and after: exactly one POST, exactly one new run.
+Repeated once more with the same result.
+
+**Root cause:** not a code defect. The anomalous second trigger
+happened in a window where the run picker had just been switched via a
+direct DOM `dispatchEvent`, re-rendering the tab panel; a subsequent
+click aimed at the "Exceptions" tab, using an element reference
+obtained from an earlier `find` call, landed on the "Run reconciliation"
+button instead — a known instability of this environment's browser-
+automation tooling with stale element references across a React
+re-render, not application behavior. The isolated single-click test
+conclusively rules out a real double-submit bug: `ReconcileRunner` has
+no code path that can fire two jobs from one click.
+
+**Fix:** none needed in application code. Documented here specifically
+*because* the instinct after seeing "1 click → 2 runs" is to add
+defensive code (disable-on-mousedown, a submission-lock ref, etc.)
+against a bug that doesn't exist — which would have been effort spent
+solving the wrong problem. The two extra runs this produced in
+`data/output/audit.db` were left in place (real, valid 90%-match-rate
+runs, not corrupted data) — they exercise the run-history/trend-chart
+feature usefully rather than needing cleanup.
+
 ---
 
 ## Template for new entries

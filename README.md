@@ -2,8 +2,9 @@
 
 **Razorpay Individual Hackathon — Track 04, AI Finance Controller**
 **Status: v1.0 complete** (Phases 0–8 of `project_plan.md`); v2.0 in
-progress — Phases 9 (test suite & backend hardening) and 10
-(human-in-the-loop resolution) done, see `project_plan_v2.md`.
+progress — Phases 9 (test suite & backend hardening), 10
+(human-in-the-loop resolution), and 11 (richer dashboard) done, see
+`project_plan_v2.md`.
 
 An agent that closes one finance-ops loop: reconciling Razorpay settlement
 data against a bank statement across a 50+ record batch, and letting a
@@ -104,14 +105,16 @@ cd backend
 source .venv/bin/activate
 python3 -m pytest -v
 ```
-55 tests, no network calls (the LLM tier is tested via an injectable fake
+62 tests, no network calls (the LLM tier is tested via an injectable fake
 function, not the real Ollama API) — covers the matching engine's rule
-tiers and tie-breaking, the LLM response parser's defensive-parsing edge
-cases, retry/backoff on transient LLM failures, the audit trail's storage
-and query functions (including human-in-the-loop resolution and
-concurrent-resolve safety) against a real temp SQLite DB, cross-thread
-connection safety, the Q&A agent's tool dispatch, and the FastAPI
-endpoints (including both 404 edge cases and the resolve endpoint) via
+tiers and tie-breaking, real progress reporting through the reconciliation
+pipeline, the LLM response parser's defensive-parsing edge cases,
+retry/backoff on transient LLM failures, the audit trail's storage and
+query functions (including human-in-the-loop resolution, concurrent-resolve
+safety, and amount/date enrichment for the dashboard's filters) against a
+real temp SQLite DB, cross-thread connection safety, the Q&A agent's tool
+dispatch, and the FastAPI endpoints (including both 404 edge cases, the
+resolve endpoint, and the async reconcile job/status endpoints) via
 `TestClient`.
 
 ## Running locally
@@ -143,7 +146,8 @@ Interactive API docs at http://localhost:8000/docs. Endpoints:
 | Endpoint | Purpose |
 |---|---|
 | `GET /health` | liveness check |
-| `POST /reconcile` | run the engine (body: `settlement_path`, `bank_path`, `use_llm`, `model` — all optional) |
+| `POST /reconcile` | run the engine synchronously (body: `settlement_path`, `bank_path`, `use_llm`, `model` — all optional) |
+| `POST /reconcile/async` | same, but returns `{job_id}` immediately; poll `GET /reconcile/status/{job_id}` for real `stage`/`done`/`total` progress and the eventual `result` — what the dashboard's "Run reconciliation" button uses |
 | `GET /runs` | list all reconciliation runs |
 | `GET /matches` | matched records for a run (`?run_id=`, default: latest) |
 | `GET /exceptions` | exception records for a run |
@@ -172,12 +176,17 @@ cd frontend
 npm install
 npm run dev
 ```
-http://localhost:5173 (backend must also be running). Shows the latest
-run's match-rate summary, a browsable exception list (click a row to
-lazy-load its full source-record detail), and a chat panel wired to `/qa`
-with Markdown-rendered answers and source-record citations. Responsive —
-the chat becomes a slide-over panel below ~900px. Set `VITE_API_BASE` to
-point at a non-default backend URL.
+http://localhost:5173 (backend must also be running). Shows the
+selected run's match-rate summary, a run picker (with a match-rate
+trend chart across past runs) to view any past run, tabs to browse
+either Matches or Exceptions (click a row to lazy-load its full
+source-record trace), a shared filter bar (amount range, date range,
+settlement/bank side, confidence tier), CSV export of whatever's
+currently filtered, a "Run reconciliation" button with real progress
+(not a spinner — see `POST /reconcile/async` above), and a chat panel
+wired to `/qa` with Markdown-rendered answers and source-record
+citations. Responsive — the chat becomes a slide-over panel below
+~900px. Set `VITE_API_BASE` to point at a non-default backend URL.
 
 **Human-in-the-loop**: an expanded exception row has two resolution
 actions — "Confirm no match" (note only) or "Link to a record" (a

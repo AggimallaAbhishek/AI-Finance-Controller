@@ -109,28 +109,38 @@ unresolved." This phase closes that loop.
   `tier: human` audit entry, immediately reflected in the match-rate stats
   and traceable via `/audit/{id}` exactly like a rule or LLM decision.
 
-### Phase 11 — Richer dashboard
+### Phase 11 — Richer dashboard — DONE
 
-- **Matches tab** — currently the dashboard only browses exceptions;
-  add a browsable, filterable matches view (filter by confidence tier:
-  exact / fuzzy-date / fuzzy-amount / llm-reasoned / human-resolved)
-- **Run history** — a view over `GET /runs`, with match rate per run;
-  a simple trend visualization (see the `dataviz` skill for chart design
-  guidance when this gets built) if there are enough runs to make one
-  meaningful
-- **Run picker** — deferred in v1.0 by deliberate choice ("latest run
-  only, recommended," Phase 6); now that run history exists, add a
-  dropdown to view any past run's data, not just latest
-- **Filter/search** in the exception list — by amount range, date range,
-  settlement vs. bank side
-- **CSV export** — download the current view's matches/exceptions
-- **Trigger-run button** — also deferred in v1.0 ("read-only for now");
-  add a button that calls `POST /reconcile` and shows progress (the LLM
-  tier takes real time — needs a loading state, not just a spinner that
-  looks stuck)
-- **Exit check:** a user can browse matches (not just exceptions), pick any
-  past run, filter what they're looking at, export it, and trigger a new
-  run — all without leaving the dashboard or touching curl.
+- **Matches tab** — a browsable, filterable matches view alongside
+  Exceptions, filterable by confidence tier (exact / fuzzy-date /
+  fuzzy-amount / fuzzy-date-amount / llm-reasoned / human-resolved),
+  each row expandable to the same settlement/bank trace detail as an
+  exception row
+- **Run history** — `audit.list_matches`/`list_exceptions` enriched
+  with real `amount`/`date` (LEFT JOIN onto `settlements`/
+  `bank_entries`, since `audit_log` itself only carries refs) to make
+  filtering possible; a hand-drawn SVG bar chart shows match-rate trend
+  across runs, oldest to newest, next to the run picker (no charting
+  library — consistent with the plain-CSS frontend)
+- **Run picker** — a dropdown over `GET /runs` to view any past run's
+  data, switching matches/exceptions/stats live
+- **Filter/search** — amount range, date range, and settlement-vs-bank
+  side (Exceptions only — Matches always have both sides), plus the
+  confidence-tier chips, shared via one `FilterBar` component
+- **CSV export** — client-side download of whatever's currently
+  filtered/visible, on both tabs
+- **Trigger-run button** — `POST /reconcile/async` + `GET
+  /reconcile/status/{job_id}` (new, additive endpoints — the existing
+  synchronous `POST /reconcile` is untouched for docs/tests/CLI
+  parity): a background thread runs the real engine with a
+  `progress_cb` reporting real stage/done/total counts (`rules` per
+  settlement, `llm` per candidate reviewed, `persisting`), polled every
+  500ms — a real progress bar, not a spinner
+- **Exit check, verified live:** browsed both tabs with tier/amount/
+  date/side filters combined, switched to an older run via the picker,
+  exported a real CSV to disk, and triggered a genuine new
+  reconciliation run (real Ollama calls) end-to-end from the dashboard
+  with live progress — all without touching curl.
 
 ### Phase 12 — New data capabilities
 
