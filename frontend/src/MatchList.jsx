@@ -1,15 +1,7 @@
 import { useState } from 'react'
 import { getTrace } from './api'
 import { downloadCsv } from './csv'
-
-const TIER_LABELS = {
-  exact: 'Exact',
-  'fuzzy-date': 'Fuzzy date',
-  'fuzzy-amount': 'Fuzzy amount',
-  'fuzzy-date-amount': 'Fuzzy date+amount',
-  'llm-reasoned': 'LLM-reasoned',
-  'human-resolved': 'Human-resolved',
-}
+import { TIER_HINTS, TIER_LABELS } from './tiers'
 
 function formatAmount(amount) {
   if (amount === null || amount === undefined) return '—'
@@ -44,7 +36,7 @@ function MatchRow({ match, runId }) {
   return (
     <li className="exception-row">
       <button type="button" className="exception-row__summary" aria-expanded={expanded} onClick={toggle}>
-        <span className="tier-badge">{TIER_LABELS[match.confidence] || match.confidence}</span>
+        <span className="tier-badge" title={TIER_HINTS[match.confidence]}>{TIER_LABELS[match.confidence] || match.confidence}</span>
         <code className="exception-row__id">{match.settlement_ref}</code>
         <span className="muted">&rarr;</span>
         <code className="exception-row__id">{match.bank_ref}</code>

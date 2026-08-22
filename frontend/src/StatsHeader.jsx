@@ -40,12 +40,10 @@ export default function StatsHeader({ run, stats }) {
             <dt>By LLM</dt>
             <dd>{stats.llm_matched}</dd>
           </div>
-          {stats.human_resolved > 0 && (
-            <div className="stat-strip__item">
-              <dt>By you</dt>
-              <dd>{stats.human_resolved}</dd>
-            </div>
-          )}
+          <div className="stat-strip__item">
+            <dt>By you</dt>
+            <dd>{stats.human_resolved}</dd>
+          </div>
           <div className="stat-strip__item stat-strip__item--warn">
             <dt>Exceptions</dt>
             <dd>{totalExceptions}</dd>

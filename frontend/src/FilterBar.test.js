@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { applyFilters, DEFAULT_FILTERS } from './FilterBar'
+import { applyFilters, countActiveFilters, DEFAULT_FILTERS } from './FilterBar'
 
 const bySide = (r) => (r.settlement_ref ? 'settlement' : 'bank')
 
@@ -68,5 +68,28 @@ describe('applyFilters', () => {
   test('combines multiple active filters with AND semantics', () => {
     const result = applyFilters(rows, { ...DEFAULT_FILTERS, amountMin: '400', tiers: ['llm-reasoned'] })
     expect(result.map((r) => r.id)).toEqual([4])
+  })
+})
+
+describe('countActiveFilters', () => {
+  test('is zero for default filters', () => {
+    expect(countActiveFilters(DEFAULT_FILTERS)).toBe(0)
+  })
+
+  test('counts amountMin of "0" as active (a truthy non-empty string)', () => {
+    expect(countActiveFilters({ ...DEFAULT_FILTERS, amountMin: '0' })).toBe(1)
+  })
+
+  test('counts each independently active field once', () => {
+    expect(countActiveFilters({ ...DEFAULT_FILTERS, amountMin: '10', dateFrom: '2026-07-01' })).toBe(2)
+  })
+
+  test('side counts as active only when not "all"', () => {
+    expect(countActiveFilters({ ...DEFAULT_FILTERS, side: 'all' })).toBe(0)
+    expect(countActiveFilters({ ...DEFAULT_FILTERS, side: 'bank' })).toBe(1)
+  })
+
+  test('a non-empty tiers array counts as one active field, not one per tier', () => {
+    expect(countActiveFilters({ ...DEFAULT_FILTERS, tiers: ['exact', 'llm-reasoned'] })).toBe(1)
   })
 })

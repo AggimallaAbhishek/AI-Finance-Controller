@@ -1,13 +1,28 @@
-const TIERS = [
-  { value: 'exact', label: 'Exact' },
-  { value: 'fuzzy-date', label: 'Fuzzy date' },
-  { value: 'fuzzy-amount', label: 'Fuzzy amount' },
-  { value: 'fuzzy-date-amount', label: 'Fuzzy date+amount' },
-  { value: 'llm-reasoned', label: 'LLM-reasoned' },
-  { value: 'human-resolved', label: 'Human-resolved' },
-]
+import { useState } from 'react'
+import { TIERS } from './tiers'
+
+// Pure seam, extracted for testing — how many filter fields are currently
+// narrowing the list, used both for the disclosure's default open/closed
+// state and its "N active" badge.
+export function countActiveFilters(filters) {
+  let count = 0
+  if (filters.amountMin) count++
+  if (filters.amountMax) count++
+  if (filters.dateFrom) count++
+  if (filters.dateTo) count++
+  if (filters.side !== 'all') count++
+  if (filters.tiers.length > 0) count++
+  return count
+}
 
 export default function FilterBar({ filters, onChange, showSide, showTier, resultCount }) {
+  const activeCount = countActiveFilters(filters)
+  // Starts open only when filters are already active (e.g. returning from
+  // the Upload & Run tab with filters still set) — otherwise collapsed, so
+  // a fresh view isn't showing 5 fields + 6 chips before the user asked
+  // for them.
+  const [expanded, setExpanded] = useState(activeCount > 0)
+
   function set(patch) {
     onChange({ ...filters, ...patch })
   }
@@ -19,79 +34,90 @@ export default function FilterBar({ filters, onChange, showSide, showTier, resul
     set({ tiers: next })
   }
 
-  const isDefault =
-    !filters.amountMin && !filters.amountMax && !filters.dateFrom && !filters.dateTo &&
-    filters.side === 'all' && filters.tiers.length === 0
-
   return (
     <div className="filter-bar">
-      <div className="filter-bar__row">
-        <label className="filter-bar__field">
-          Amount min
-          <input
-            type="number"
-            inputMode="decimal"
-            placeholder="₹0"
-            value={filters.amountMin}
-            onChange={(e) => set({ amountMin: e.target.value })}
-          />
-        </label>
-        <label className="filter-bar__field">
-          Amount max
-          <input
-            type="number"
-            inputMode="decimal"
-            placeholder="Any"
-            value={filters.amountMax}
-            onChange={(e) => set({ amountMax: e.target.value })}
-          />
-        </label>
-        <label className="filter-bar__field">
-          Date from
-          <input type="date" value={filters.dateFrom} onChange={(e) => set({ dateFrom: e.target.value })} />
-        </label>
-        <label className="filter-bar__field">
-          Date to
-          <input type="date" value={filters.dateTo} onChange={(e) => set({ dateTo: e.target.value })} />
-        </label>
-        {showSide && (
-          <label className="filter-bar__field">
-            Side
-            <select value={filters.side} onChange={(e) => set({ side: e.target.value })}>
-              <option value="all">Both</option>
-              <option value="settlement">Settlement</option>
-              <option value="bank">Bank</option>
-            </select>
-          </label>
+      <div className="filter-bar__summary">
+        <button
+          type="button"
+          className="filter-bar__toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          Filters
+          {activeCount > 0 && <span className="filter-bar__badge">{activeCount}</span>}
+        </button>
+        <span className="muted">{resultCount} shown</span>
+        {activeCount > 0 && (
+          <button
+            type="button"
+            className="filter-bar__clear"
+            onClick={() => set({ amountMin: '', amountMax: '', dateFrom: '', dateTo: '', side: 'all', tiers: [] })}
+          >
+            Clear filters
+          </button>
         )}
-        <div className="filter-bar__count muted">
-          {resultCount} shown
-          {!isDefault && (
-            <button
-              type="button"
-              className="filter-bar__clear"
-              onClick={() => set({ amountMin: '', amountMax: '', dateFrom: '', dateTo: '', side: 'all', tiers: [] })}
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
       </div>
 
-      {showTier && (
-        <div className="filter-bar__chips">
-          {TIERS.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              className={`filter-chip${filters.tiers.includes(t.value) ? ' filter-chip--active' : ''}`}
-              aria-pressed={filters.tiers.includes(t.value)}
-              onClick={() => toggleTier(t.value)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      {expanded && (
+        <>
+          <div className="filter-bar__row">
+            <label className="filter-bar__field">
+              Amount min
+              <input
+                type="number"
+                inputMode="decimal"
+                placeholder="₹0"
+                value={filters.amountMin}
+                onChange={(e) => set({ amountMin: e.target.value })}
+              />
+            </label>
+            <label className="filter-bar__field">
+              Amount max
+              <input
+                type="number"
+                inputMode="decimal"
+                placeholder="Any"
+                value={filters.amountMax}
+                onChange={(e) => set({ amountMax: e.target.value })}
+              />
+            </label>
+            <label className="filter-bar__field">
+              Date from
+              <input type="date" value={filters.dateFrom} onChange={(e) => set({ dateFrom: e.target.value })} />
+            </label>
+            <label className="filter-bar__field">
+              Date to
+              <input type="date" value={filters.dateTo} onChange={(e) => set({ dateTo: e.target.value })} />
+            </label>
+            {showSide && (
+              <label className="filter-bar__field">
+                Side
+                <select value={filters.side} onChange={(e) => set({ side: e.target.value })}>
+                  <option value="all">Both</option>
+                  <option value="settlement">Settlement</option>
+                  <option value="bank">Bank</option>
+                </select>
+              </label>
+            )}
+          </div>
+
+          {showTier && (
+            <div className="filter-bar__chips">
+              {TIERS.map((t) => (
+                <button
+                  key={t.value}
+                  type="button"
+                  className={`filter-chip${filters.tiers.includes(t.value) ? ' filter-chip--active' : ''}`}
+                  aria-pressed={filters.tiers.includes(t.value)}
+                  title={t.hint}
+                  onClick={() => toggleTier(t.value)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

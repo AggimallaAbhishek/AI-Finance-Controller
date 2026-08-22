@@ -2,6 +2,22 @@ function formatTimestamp(iso) {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
+// Pure seams, extracted for testing. run_id is a technical identifier
+// (`20260822T085902-44b7ac`) — useful for cross-referencing against the
+// API/audit trail, but not what a human scanning a dropdown of 15+ runs
+// wants leading the label. Deprioritized to a short trailing reference
+// instead of dropped, so it's still there when needed.
+export function shortRunRef(runId) {
+  const i = runId.lastIndexOf('-')
+  return i === -1 ? runId : runId.slice(i + 1)
+}
+
+export function formatRunOption(run) {
+  const pct = Math.round((run.stats.match_rate ?? 0) * 100)
+  const total = run.stats.total_settlements ?? '?'
+  return `${formatTimestamp(run.timestamp)} · ${pct}% · ${total} records · #${shortRunRef(run.run_id)}`
+}
+
 function TrendChart({ runs }) {
   // Oldest to newest, left to right — runs arrives newest-first from the API.
   const chronological = [...runs].reverse()
@@ -52,7 +68,7 @@ export default function RunPicker({ runs, currentRunId, onSelect }) {
         >
           {runs.map((r) => (
             <option key={r.run_id} value={r.run_id}>
-              {r.run_id} · {Math.round((r.stats.match_rate ?? 0) * 100)}% · {formatTimestamp(r.timestamp)}
+              {formatRunOption(r)}
             </option>
           ))}
         </select>

@@ -698,8 +698,53 @@ button {
   background: var(--surface);
 }
 
+.filter-bar__summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.filter-bar__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.filter-bar__toggle:hover {
+  border-color: var(--accent-border);
+}
+
+.filter-bar__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent-solid);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.filter-bar__summary .filter-bar__clear {
+  margin-left: auto;
+}
+
 .filter-bar__row {
   display: flex;
+  margin-top: 12px;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 16px;
@@ -728,15 +773,6 @@ button {
   background: var(--bg);
   color: var(--text-h);
   width: 128px;
-}
-
-.filter-bar__count {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  white-space: nowrap;
 }
 
 .filter-bar__clear {
@@ -1074,10 +1110,8 @@ button {
     flex: 1;
   }
 
-  .filter-bar__count {
-    margin-left: 0;
-    width: 100%;
-    justify-content: space-between;
+  .filter-bar__summary {
+    flex-wrap: wrap;
   }
 
   .stats-header {
