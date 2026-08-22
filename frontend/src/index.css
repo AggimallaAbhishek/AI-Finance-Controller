@@ -194,14 +194,12 @@ button {
   border-bottom: 1px solid var(--border);
   padding: 24px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .stats-header__title h1 {
-  font-size: 22px;
+  font-size: 24px;
 }
 
 .stats-header__meta {
@@ -209,59 +207,51 @@ button {
   font-size: 13px;
 }
 
-.stats-header__figures {
-  display: flex;
-  align-items: center;
-  gap: 32px;
-  flex-wrap: wrap;
-}
-
-.stat-primary {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1;
-}
-
-.stat-primary__value {
-  font-size: 40px;
-  font-weight: 700;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-primary__label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-top: 4px;
-  color: var(--text);
-}
-
-.stat-strip {
-  display: flex;
-  gap: 24px;
+/* Reads as one reconciliation statement — "90% matched (90/100) · 80 by
+   rule · 10 by LLM · 0 by you · 16 open exceptions" — rather than a
+   boxed KPI card with a stacked label under it. The match-rate figure
+   stays neutral (--text-h): it's an aggregate, not any one tier's
+   number, so it doesn't borrow the provenance palette below. */
+.stats-header__summary {
   margin: 0;
-}
-
-.stat-strip__item dt {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 15px;
+  line-height: 1.8;
   color: var(--text);
-  opacity: 0.75;
 }
 
-.stat-strip__item dd {
-  margin: 2px 0 0;
-  font-size: 20px;
-  font-weight: 600;
+.stats-header__rate {
+  font-family: var(--display);
+  font-size: 34px;
+  font-weight: 700;
   color: var(--text-h);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
-.stat-strip__item--warn dd {
+.stats-header__figure {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-header__figure--rule {
+  color: var(--tier-rule);
+}
+
+.stats-header__figure--llm {
+  color: var(--accent);
+}
+
+.stats-header__figure--human {
+  color: var(--success);
+}
+
+.stats-header__figure--warn {
   color: var(--warn);
+}
+
+.stats-header__divider {
+  margin: 0 10px;
+  opacity: 0.4;
 }
 
 /* ---------- exception list ---------- */
@@ -834,6 +824,9 @@ button {
 }
 
 .filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -848,6 +841,29 @@ button {
   border-color: var(--accent-border);
   color: var(--accent);
   font-weight: 600;
+}
+
+/* A small provenance-color dot, independent of active/inactive state —
+   ties each chip to the same rule/llm/human palette as the tier badges
+   and stat header, without recoloring the whole chip (which would turn
+   into visual noise once several tiers are active at once). */
+.filter-chip__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.filter-chip__dot--rule {
+  background: var(--tier-rule);
+}
+
+.filter-chip__dot--llm {
+  background: var(--accent);
+}
+
+.filter-chip__dot--human {
+  background: var(--success);
 }
 
 /* ---------- list header / export ---------- */
@@ -900,6 +916,16 @@ button {
   background: var(--accent-bg);
   color: var(--accent);
   white-space: nowrap;
+}
+
+.tier-badge--rule {
+  background: var(--tier-rule-bg);
+  color: var(--tier-rule);
+}
+
+.tier-badge--human {
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 /* ---------- chat panel ---------- */
@@ -1156,8 +1182,8 @@ button {
     padding: 16px;
   }
 
-  .stats-header__figures {
-    gap: 20px;
+  .stats-header__rate {
+    font-size: 28px;
   }
 
   .dashboard__chat {

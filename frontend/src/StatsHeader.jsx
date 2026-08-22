@@ -19,37 +19,30 @@ export default function StatsHeader({ run, stats }) {
         </p>
       </div>
 
-      <div className="stats-header__figures">
-        <div className="stat-primary">
-          <span className="stat-primary__value">{matchPct}%</span>
-          <span className="stat-primary__label">match rate</span>
-        </div>
-
-        <dl className="stat-strip">
-          <div className="stat-strip__item">
-            <dt>Matched</dt>
-            <dd>
-              {stats.matched} / {stats.total_settlements}
-            </dd>
-          </div>
-          <div className="stat-strip__item">
-            <dt>By rule</dt>
-            <dd>{stats.rule_matched}</dd>
-          </div>
-          <div className="stat-strip__item">
-            <dt>By LLM</dt>
-            <dd>{stats.llm_matched}</dd>
-          </div>
-          <div className="stat-strip__item">
-            <dt>By you</dt>
-            <dd>{stats.human_resolved}</dd>
-          </div>
-          <div className="stat-strip__item stat-strip__item--warn">
-            <dt>Exceptions</dt>
-            <dd>{totalExceptions}</dd>
-          </div>
-        </dl>
-      </div>
+      <p className="stats-header__summary">
+        <span className="stats-header__rate">{matchPct}%</span> matched
+        <span className="muted">
+          {' '}
+          ({stats.matched}/{stats.total_settlements})
+        </span>
+        <span className="stats-header__divider" aria-hidden="true">
+          &middot;
+        </span>
+        <span className="stats-header__figure stats-header__figure--rule">{stats.rule_matched}</span> by rule
+        <span className="stats-header__divider" aria-hidden="true">
+          &middot;
+        </span>
+        <span className="stats-header__figure stats-header__figure--llm">{stats.llm_matched}</span> by LLM
+        <span className="stats-header__divider" aria-hidden="true">
+          &middot;
+        </span>
+        <span className="stats-header__figure stats-header__figure--human">{stats.human_resolved}</span> by you
+        <span className="stats-header__divider" aria-hidden="true">
+          &middot;
+        </span>
+        <span className="stats-header__figure stats-header__figure--warn">{totalExceptions}</span> open exception
+        {totalExceptions === 1 ? '' : 's'}
+      </p>
     </header>
   )
 }

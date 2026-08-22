@@ -112,6 +112,7 @@ export default function FilterBar({ filters, onChange, showSide, showTier, resul
                   title={t.hint}
                   onClick={() => toggleTier(t.value)}
                 >
+                  <span className={`filter-chip__dot filter-chip__dot--${t.group}`} aria-hidden="true" />
                   {t.label}
                 </button>
               ))}

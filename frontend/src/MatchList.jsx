@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { getTrace } from './api'
 import { downloadCsv } from './csv'
-import { TIER_HINTS, TIER_LABELS } from './tiers'
+import { TIER_GROUPS, TIER_HINTS, TIER_LABELS } from './tiers'
 
 function formatAmount(amount) {
   if (amount === null || amount === undefined) return '—'
@@ -42,7 +42,12 @@ function MatchRow({ match, runId }) {
         aria-label={`${TIER_LABELS[match.confidence] || match.confidence} match, ${match.settlement_ref} to ${match.bank_ref}, details`}
         onClick={toggle}
       >
-        <span className="tier-badge" title={TIER_HINTS[match.confidence]}>{TIER_LABELS[match.confidence] || match.confidence}</span>
+        <span
+          className={`tier-badge${TIER_GROUPS[match.confidence] ? ` tier-badge--${TIER_GROUPS[match.confidence]}` : ''}`}
+          title={TIER_HINTS[match.confidence]}
+        >
+          {TIER_LABELS[match.confidence] || match.confidence}
+        </span>
         <code className="exception-row__id">{match.settlement_ref}</code>
         <span className="muted">&rarr;</span>
         <code className="exception-row__id">{match.bank_ref}</code>
