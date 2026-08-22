@@ -7,6 +7,25 @@ function formatAmount(amount) {
   return `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
 }
 
+// Pure seams, extracted for testing — candidate sourcing/filtering for the
+// resolve-to-match counterpart picker.
+export function findCounterpartCandidates(allExceptions, exception) {
+  const side = exception.settlement_ref ? 'settlement' : 'bank'
+  return allExceptions.filter((e) =>
+    e.id !== exception.id && (side === 'settlement' ? e.bank_ref && !e.settlement_ref : e.settlement_ref && !e.bank_ref)
+  )
+}
+
+const MAX_VISIBLE_CANDIDATES = 8
+
+export function filterCandidatesByQuery(candidates, query) {
+  const q = query.trim().toLowerCase()
+  const matches = q
+    ? candidates.filter((c) => (c.settlement_ref || c.bank_ref || '').toLowerCase().includes(q))
+    : candidates
+  return matches.slice(0, MAX_VISIBLE_CANDIDATES)
+}
+
 function CheckIcon() {
   return (
     <svg className="resolve-confirmation__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -31,11 +50,7 @@ function CounterpartPicker({ candidates, value, onChange, disabled }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const query = value.trim().toLowerCase()
-  const filtered = query
-    ? candidates.filter((c) => (c.settlement_ref || c.bank_ref || '').toLowerCase().includes(query))
-    : candidates
-  const visible = filtered.slice(0, 8)
+  const visible = filterCandidatesByQuery(candidates, value)
 
   function select(candidate) {
     onChange(candidate.settlement_ref || candidate.bank_ref)
@@ -97,7 +112,7 @@ function CounterpartPicker({ candidates, value, onChange, disabled }) {
           })}
         </ul>
       )}
-      {open && query && visible.length === 0 && (
+      {open && value.trim() && visible.length === 0 && (
         <p className="counterpart-picker__empty muted">
           No open exceptions match "{value}" — you can still enter an ID directly.
         </p>
@@ -209,9 +224,7 @@ function ExceptionRow({ exception, allExceptions, runId, onResolved }) {
   const recordId = exception.settlement_ref || exception.bank_ref
   const reviewed = exception.tier === 'human'
 
-  const candidates = allExceptions.filter((e) =>
-    e.id !== exception.id && (side === 'settlement' ? e.bank_ref && !e.settlement_ref : e.settlement_ref && !e.bank_ref)
-  )
+  const candidates = findCounterpartCandidates(allExceptions, exception)
 
   async function toggle() {
     const next = !expanded
