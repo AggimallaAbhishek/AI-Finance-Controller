@@ -303,6 +303,12 @@ button {
   background: var(--surface);
 }
 
+/* Neutral, bordered treatment — "which side" is structural metadata
+   (where does this record come from), not a trust signal, so it
+   deliberately does NOT borrow a color from either the action palette
+   or the tier-provenance palette. Reusing --accent here (as it did
+   before) meant the same violet stood for "click this," "the LLM
+   decided this," and "this is the settlement side" all at once. */
 .side-badge {
   flex-shrink: 0;
   font-size: 11px;
@@ -311,13 +317,15 @@ button {
   letter-spacing: 0.04em;
   padding: 3px 8px;
   border-radius: 999px;
-  background: var(--accent-bg);
-  color: var(--accent);
+  background: var(--surface);
+  color: var(--text-h);
+  border: 1px solid var(--border);
 }
 
 .side-badge--bank {
   background: var(--warn-bg);
   color: var(--warn);
+  border-color: transparent;
 }
 
 .exception-row__id {
@@ -353,6 +361,15 @@ button {
   margin: 0;
 }
 
+.detail-grid > div {
+  /* Grid items default to min-width:auto, so a long unbreakable run in
+     dd (e.g. bank narration) can force its track past minmax(140px,1fr)
+     and overlap the next column. min-width:0 lets the track actually
+     shrink to its constraint; overflow-wrap on dd below handles the
+     content itself. */
+  min-width: 0;
+}
+
 .detail-grid dt {
   font-size: 11px;
   text-transform: uppercase;
@@ -365,6 +382,7 @@ button {
   margin: 2px 0 0;
   color: var(--text-h);
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .empty-state {
