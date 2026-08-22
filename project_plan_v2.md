@@ -1,5 +1,6 @@
 # AI Finance Controller — Project Plan v2.0
 
+**Status:** Complete — see `CHANGELOG.md` for the v2.0 entry.
 **Builds on:** v1.0 (`project_plan.md`, Phases 0–8, complete — see `CHANGELOG.md`)
 **Goal for this version:** a genuinely deeper feature set — human-in-the-loop
 review, a richer dashboard, real data ingestion, and the backend robustness
@@ -59,7 +60,7 @@ say *how* something was decided, not just *what* was decided.
 
 ## 3. Phases
 
-### Phase 9 — Test suite & backend hardening
+### Phase 9 — Test suite & backend hardening — DONE
 
 The foundation the rest of v2.0 gets built on.
 
@@ -86,7 +87,7 @@ The foundation the rest of v2.0 gets built on.
   above, and a transient Ollama failure during the LLM tier no longer
   silently costs a real match.
 
-### Phase 10 — Human-in-the-loop exception resolution
+### Phase 10 — Human-in-the-loop exception resolution — DONE
 
 The dashboard's exception list currently ends at "here's why it's
 unresolved." This phase closes that loop.
@@ -178,6 +179,26 @@ request) and *is* fully verified live.
   docs/ADR-002's Consequences section for what verification looks like
   once they exist.
 
+### Also completed this version (not originally itemized as a phase)
+
+- **Design-quality pass** — a two-assessment `/impeccable critique` (an
+  isolated design-director review plus a mechanical detector/browser-
+  evidence pass) scored the dashboard 23/40 and surfaced 5 priority
+  issues; all 5 were fixed and verified live: a WCAG-AA contrast failure
+  on every primary button (2.6:1 → 5.7:1), match/exception reason text
+  that overflowed its box instead of being readable, a free-text
+  counterpart-ID field replaced with a searchable picker sourced from
+  real open exceptions, a resolve action that vanished silently now
+  shows a brief confirmation, and a mobile floating chat button that
+  overlapped form fields. See `.impeccable/critique/` for the full
+  report and `project_plan_v2.1.md` for what the critique left open.
+- **Frontend test suite** — Vitest added (previously zero frontend test
+  coverage) with tests at three agreed seams: CSV export escaping, the
+  filter-bar logic (including regression guards for two real bugs found
+  and fixed this version), and the counterpart-picker candidate
+  filtering, extracted into pure functions specifically to make that
+  logic testable.
+
 ---
 
 ## 4. Risks & mitigations
@@ -194,14 +215,18 @@ request) and *is* fully verified live.
 
 ## 5. Success criteria for v2.0
 
-- [ ] `pytest` suite passes, covering the agreed seams
-- [ ] A transient Ollama failure degrades gracefully with a retry, not an
+- [x] `pytest` suite passes, covering the agreed seams (82 tests, plus a
+      new Vitest frontend suite — 27 tests — added this version)
+- [x] A transient Ollama failure degrades gracefully with a retry, not an
       immediate honest-but-avoidable exception
-- [ ] A user can resolve an exception from the dashboard, and that
+- [x] A user can resolve an exception from the dashboard, and that
       resolution is audited exactly as traceably as a rule/LLM decision
-- [ ] Matches are browsable, not just exceptions
-- [ ] Past runs are browsable and comparable, not just "latest"
-- [ ] A new reconciliation run can be triggered from the dashboard with a
+- [x] Matches are browsable, not just exceptions
+- [x] Past runs are browsable and comparable, not just "latest"
+- [x] A new reconciliation run can be triggered from the dashboard with a
       real progress state
 - [ ] (Stretch) the engine produces honest results against real Razorpay
-      settlement data, not just synthetic CSVs
+      settlement data, not just synthetic CSVs — code-complete and
+      unit-tested against Razorpay's real API contract, but genuinely
+      unverified: no credentials have been available to run it live.
+      Left unchecked honestly rather than claimed.

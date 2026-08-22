@@ -1,10 +1,12 @@
 # AI Finance Controller
 
 **Razorpay Individual Hackathon — Track 04, AI Finance Controller**
-**Status: v1.0 complete** (Phases 0–8 of `project_plan.md`); v2.0 in
-progress — Phases 9 (test suite & backend hardening), 10
-(human-in-the-loop resolution), and 11 (richer dashboard) done, see
-`project_plan_v2.md`.
+**Status: v2.0 complete** (Phases 0–12; v1.0 in `project_plan.md`, v2.0 in
+`project_plan_v2.md`). The Razorpay live-data exit check remains
+honestly unverified — no credentials have been available — everything
+else, including a design-quality pass and a new frontend test suite, is
+done and verified. v2.1 (frontend design/UX optimization) is planned in
+`project_plan_v2.1.md`, not yet started.
 
 An agent that closes one finance-ops loop: reconciling Razorpay settlement
 data against a bank statement across a 50+ record batch, and letting a
@@ -240,9 +242,10 @@ backend/           reconcile.py (engine), audit.py (trail), qa_agent.py (Ollama 
 frontend/          React dashboard (Vite)
 docs/              ADRs, glossary, build-challenges log, Phase 7 held-out test report,
                    demo script
-project_plan.md    the v1.0 phase-by-phase build plan this repo followed
-project_plan_v2.md the v2.0 plan for what's next
-CHANGELOG.md       what shipped in each version
+project_plan.md      the v1.0 phase-by-phase build plan this repo followed
+project_plan_v2.md   the v2.0 plan (complete)
+project_plan_v2.1.md the v2.1 plan — frontend design/UX optimization (planned, not started)
+CHANGELOG.md         what shipped in each version
 ```
 
 ## Demo
