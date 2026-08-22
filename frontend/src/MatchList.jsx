@@ -35,26 +35,28 @@ function MatchRow({ match, runId }) {
 
   return (
     <li className="exception-row">
-      <button
-        type="button"
-        className="exception-row__summary"
-        aria-expanded={expanded}
-        aria-label={`${TIER_LABELS[match.confidence] || match.confidence} match, ${match.settlement_ref} to ${match.bank_ref}, details`}
-        onClick={toggle}
-      >
-        <span
-          className={`tier-badge${TIER_GROUPS[match.confidence] ? ` tier-badge--${TIER_GROUPS[match.confidence]}` : ''}`}
-          title={TIER_HINTS[match.confidence]}
+      <div className="exception-row__head">
+        <button
+          type="button"
+          className="exception-row__summary"
+          aria-expanded={expanded}
+          aria-label={`${TIER_LABELS[match.confidence] || match.confidence} match, ${match.settlement_ref} to ${match.bank_ref}, details`}
+          onClick={toggle}
         >
-          {TIER_LABELS[match.confidence] || match.confidence}
-        </span>
-        <code className="exception-row__id">{match.settlement_ref}</code>
-        <span className="muted">&rarr;</span>
-        <code className="exception-row__id">{match.bank_ref}</code>
-        <span className="exception-row__amount">{formatAmount(match.amount)}</span>
-        <span className="exception-row__reason">{match.reason}</span>
-        <span className="exception-row__chevron" aria-hidden="true">{expanded ? '−' : '+'}</span>
-      </button>
+          <span
+            className={`tier-badge${TIER_GROUPS[match.confidence] ? ` tier-badge--${TIER_GROUPS[match.confidence]}` : ''}`}
+            title={TIER_HINTS[match.confidence]}
+          >
+            {TIER_LABELS[match.confidence] || match.confidence}
+          </span>
+          <code className="exception-row__id">{match.settlement_ref}</code>
+          <span className="muted">&rarr;</span>
+          <code className="exception-row__id">{match.bank_ref}</code>
+          <span className="exception-row__amount">{formatAmount(match.amount)}</span>
+          <span className="exception-row__reason">{match.reason}</span>
+          <span className="exception-row__chevron" aria-hidden="true">{expanded ? '−' : '+'}</span>
+        </button>
+      </div>
 
       {expanded && (
         <div className="exception-row__detail" aria-live="polite">
