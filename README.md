@@ -1,12 +1,12 @@
 # AI Finance Controller
 
 **Razorpay Individual Hackathon — Track 04, AI Finance Controller**
-**Status: v2.0 complete** (Phases 0–12; v1.0 in `project_plan.md`, v2.0 in
-`project_plan_v2.md`). The Razorpay live-data exit check remains
-honestly unverified — no credentials have been available — everything
-else, including a design-quality pass and a new frontend test suite, is
-done and verified. v2.1 (frontend design/UX optimization) is planned in
-`project_plan_v2.1.md`, not yet started.
+**Status: v2.1 complete** (Phases 0–16; v1.0 in `project_plan.md`, v2.0
+in `project_plan_v2.md`, v2.1 in `project_plan_v2.1.md`). The Razorpay
+live-data exit check remains honestly unverified — no credentials have
+been available — everything else is done and verified, including two
+full `/impeccable` design critiques (23 → 27/40), bulk exception
+resolution, sortable lists, and a growing frontend test suite (46 tests).
 
 An agent that closes one finance-ops loop: reconciling Razorpay settlement
 data against a bank statement across a 50+ record batch, and letting a
@@ -180,28 +180,35 @@ npm install
 npm run dev
 ```
 http://localhost:5173 (backend must also be running). Shows the
-selected run's match-rate summary, a run picker (with a match-rate
-trend chart across past runs) to view any past run, tabs to browse
-either Matches or Exceptions (click a row to lazy-load its full
-source-record trace), a shared filter bar (amount range, date range,
-settlement/bank side, confidence tier), CSV export of whatever's
-currently filtered, a "Run reconciliation" button with real progress
-(not a spinner — see `POST /reconcile/async` above), an "Upload & Run"
-tab to run the pipeline against your own settlement/bank CSVs from the
-browser instead of the server's default files, and a chat panel wired
-to `/qa` with Markdown-rendered answers and source-record citations.
-Responsive — the chat becomes a slide-over panel below ~900px. Set
-`VITE_API_BASE` to point at a non-default backend URL.
+selected run's match-rate summary as a single ledger-line statement
+(color-coded by provenance — rule/LLM/human, see `frontend/src/tiers.js`),
+a run picker (with a match-rate trend chart across past runs) to view
+any past run, tabs to browse either Matches or Exceptions (click a row
+to lazy-load its full source-record trace), a shared filter bar (amount
+range, date range, settlement/bank side, confidence tier) collapsible
+behind a "Filters" disclosure, a sort control (amount/date, both
+directions), CSV export of whatever's currently filtered/sorted, a "Run
+reconciliation" button with real progress (not a spinner — see
+`POST /reconcile/async` above), an "Upload & Run" tab to run the
+pipeline against your own settlement/bank CSVs from the browser instead
+of the server's default files, and a chat panel wired to `/qa` with
+Markdown-rendered answers and source-record citations. Fully keyboard-
+navigable. Responsive — the chat becomes a slide-over panel below
+~900px. Set `VITE_API_BASE` to point at a non-default backend URL.
 
 **Human-in-the-loop**: an expanded exception row has two resolution
 actions — "Confirm no match" (note only) or "Link to a record" (a
-counterpart record ID + note). Resolving never mutates the original
-decision — it inserts a new `tier: human` audit_log row, so
-`GET /audit/{id}` shows the full history (the original algorithmic verdict
-*and* the human's later decision, in order). The header's stats are
-derived live from the current matches/exceptions, not the run's stored
-snapshot, so a resolution is reflected immediately — including a "By you"
-figure once at least one exists.
+counterpart record ID, picked from a searchable list of real open
+exceptions on the opposite side, not free text). Resolving never
+mutates the original decision — it inserts a new `tier: human`
+audit_log row, so `GET /audit/{id}` shows the full history (the
+original algorithmic verdict *and* the human's later decision, in
+order). The header's stats are derived live from the current
+matches/exceptions, not the run's stored snapshot, so a resolution is
+reflected immediately — including a "By you" figure. Exceptions can
+also be selected via checkboxes and confirmed no-match in bulk with one
+shared note — still one independent `tier: human` audit row per record,
+never a merged action.
 
 **Without the API running** — run the engine and inspect results directly:
 ```

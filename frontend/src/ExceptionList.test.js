@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'vitest'
-import { filterCandidatesByQuery, findCounterpartCandidates } from './ExceptionList'
+import { filterCandidatesByQuery, findCounterpartCandidates, recordIdOf } from './ExceptionList'
+
+describe('recordIdOf', () => {
+  test('returns settlement_ref when present', () => {
+    expect(recordIdOf({ settlement_ref: 'S1', bank_ref: null })).toBe('S1')
+  })
+
+  test('falls back to bank_ref when settlement_ref is absent', () => {
+    expect(recordIdOf({ settlement_ref: null, bank_ref: 'B2' })).toBe('B2')
+  })
+})
 
 describe('findCounterpartCandidates', () => {
   const settlementExc = { id: 1, settlement_ref: 'S1', bank_ref: null }

@@ -273,11 +273,11 @@ button {
    overflow:hidden on the list, which would clip focus-ring outlines.
    Longhand properties so both rules combine correctly when there's only
    one row. */
-.exception-row:first-child .exception-row__summary {
+.exception-row:first-child .exception-row__head {
   border-top-left-radius: 7px;
   border-top-right-radius: 7px;
 }
-.exception-row:last-child .exception-row__summary {
+.exception-row:last-child .exception-row__head {
   border-bottom-left-radius: 7px;
   border-bottom-right-radius: 7px;
 }
@@ -286,8 +286,23 @@ button {
   border-top: 1px solid var(--border);
 }
 
+/* Wraps the optional select-for-bulk-action checkbox and the summary
+   button as siblings — a checkbox can't nest inside a <button>, and
+   clicking it must not also toggle row expansion. */
+.exception-row__head {
+  display: flex;
+  align-items: center;
+}
+
+.exception-row__select {
+  flex-shrink: 0;
+  margin-left: 16px;
+  cursor: pointer;
+}
+
 .exception-row__summary {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -784,6 +799,16 @@ button {
   font-weight: 700;
 }
 
+.filter-bar__sort select {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+}
+
 .filter-bar__summary .filter-bar__clear {
   margin-left: auto;
 }
@@ -895,6 +920,58 @@ button {
 
 .list-header h2 {
   margin-bottom: 0;
+}
+
+.list-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.list-header__select-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* ---------- bulk resolve ---------- */
+
+.bulk-bar {
+  margin-bottom: 12px;
+  padding: 10px 16px;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-bg);
+}
+
+.bulk-bar__summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.bulk-bar__clear {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.bulk-bar .resolve-form {
+  margin-top: 10px;
+  padding-top: 10px;
 }
 
 .export-button {

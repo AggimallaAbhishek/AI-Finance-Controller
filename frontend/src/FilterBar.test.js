@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { applyFilters, countActiveFilters, DEFAULT_FILTERS } from './FilterBar'
+import { applyFilters, countActiveFilters, DEFAULT_FILTERS, sortRows } from './FilterBar'
 
 const bySide = (r) => (r.settlement_ref ? 'settlement' : 'bank')
 
@@ -91,5 +91,45 @@ describe('countActiveFilters', () => {
 
   test('a non-empty tiers array counts as one active field, not one per tier', () => {
     expect(countActiveFilters({ ...DEFAULT_FILTERS, tiers: ['exact', 'llm-reasoned'] })).toBe(1)
+  })
+})
+
+describe('sortRows', () => {
+  const sortable = [
+    { id: 1, amount: 500, date: '2026-07-10' },
+    { id: 2, amount: 1200, date: '2026-07-15' },
+    { id: 3, amount: 300, date: '2026-07-05' },
+  ]
+
+  test('an empty sort value returns rows in their original order, unchanged', () => {
+    expect(sortRows(sortable, '')).toEqual(sortable)
+  })
+
+  test('does not mutate the input array', () => {
+    const copy = [...sortable]
+    sortRows(sortable, 'amount-asc')
+    expect(sortable).toEqual(copy)
+  })
+
+  test('amount-asc sorts lowest first', () => {
+    expect(sortRows(sortable, 'amount-asc').map((r) => r.id)).toEqual([3, 1, 2])
+  })
+
+  test('amount-desc sorts highest first', () => {
+    expect(sortRows(sortable, 'amount-desc').map((r) => r.id)).toEqual([2, 1, 3])
+  })
+
+  test('date-asc sorts oldest first', () => {
+    expect(sortRows(sortable, 'date-asc').map((r) => r.id)).toEqual([3, 1, 2])
+  })
+
+  test('date-desc sorts newest first', () => {
+    expect(sortRows(sortable, 'date-desc').map((r) => r.id)).toEqual([2, 1, 3])
+  })
+
+  test('a row with a missing amount sorts as if it were 0, not thrown or dropped', () => {
+    const withMissing = [...sortable, { id: 4, amount: null, date: '2026-07-01' }]
+    const result = sortRows(withMissing, 'amount-asc')
+    expect(result.map((r) => r.id)).toEqual([4, 3, 1, 2])
   })
 })

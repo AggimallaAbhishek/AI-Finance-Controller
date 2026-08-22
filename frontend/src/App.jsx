@@ -6,7 +6,7 @@ import MatchList from './MatchList'
 import RunPicker from './RunPicker'
 import ReconcileRunner from './ReconcileRunner'
 import UploadRunner from './UploadRunner'
-import FilterBar, { applyFilters, DEFAULT_FILTERS } from './FilterBar'
+import FilterBar, { applyFilters, DEFAULT_FILTERS, sortRows } from './FilterBar'
 import ChatPanel from './ChatPanel'
 
 export default function App() {
@@ -19,6 +19,7 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('exceptions') // exceptions | matches | upload
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
+  const [sort, setSort] = useState('')
 
   const refresh = useCallback(async (runId) => {
     const [{ matches }, { exceptions }] = await Promise.all([getMatches(runId), getExceptions(runId)])
@@ -86,17 +87,20 @@ export default function App() {
   }, [run, matches, exceptions])
 
   const filteredExceptions = useMemo(
-    () => applyFilters(exceptions, filters, {
+    () => sortRows(applyFilters(exceptions, filters, {
       side: (e) => (e.settlement_ref ? 'settlement' : 'bank'),
       // Tier chips are only ever shown on the Matches tab (exceptions have
       // no confidence tier — reconcile.py never sets one on an exception
       // row), so a tier picked while on Matches must never suppress
       // exceptions once the user switches tabs.
       ignoreTiers: true,
-    }),
-    [exceptions, filters],
+    }), sort),
+    [exceptions, filters, sort],
   )
-  const filteredMatches = useMemo(() => applyFilters(matches, filters), [matches, filters])
+  const filteredMatches = useMemo(
+    () => sortRows(applyFilters(matches, filters), sort),
+    [matches, filters, sort],
+  )
 
   async function handleFirstRun(newRunId) {
     const { runs: runList } = await getRuns()
@@ -189,6 +193,8 @@ export default function App() {
                 showSide={activeTab === 'exceptions'}
                 showTier={activeTab === 'matches'}
                 resultCount={activeTab === 'exceptions' ? filteredExceptions.length : filteredMatches.length}
+                sort={sort}
+                onSortChange={setSort}
               />
 
               {activeTab === 'exceptions' ? (

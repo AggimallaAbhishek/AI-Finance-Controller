@@ -1,6 +1,6 @@
 # AI Finance Controller — Project Plan v2.1
 
-**Status:** In progress — Phases 13–15 done.
+**Status:** Complete — Phases 13–16 all done. See `CHANGELOG.md` for the v2.1 entry.
 **Builds on:** v2.0 (`project_plan_v2.md`, Phases 9–12, complete — see `CHANGELOG.md`)
 **Goal for this version:** frontend design and UX optimization only — no
 new backend capability, no new data sources. v2.0 proved the feature set
@@ -190,7 +190,7 @@ deliberately here instead of folded in unplanned.
   bigger or lower-priority than fit this phase's close-out. Candidates
   for Phase 16 or a future phase, not silently dropped.
 
-### Phase 16 — Power-user efficiency (stretch)
+### Phase 16 — Power-user efficiency (stretch) — DONE
 
 The critique's Alex persona red flag, not addressed in v2.0: no
 multi-select/bulk resolve, no column sort (filter only) in either list.
@@ -212,6 +212,42 @@ those are solid, and only if the audit-trail-per-decision principle
   fewer interactions than one-at-a-time, with the audit trail showing
   5+ distinct `tier: human` rows afterward, not one merged action.
 
+**Outcome:**
+- **Sortable columns** — a `sortRows()` pure function plus a "Sort by"
+  control shared via `FilterBar` (Amount/Date, both directions), applied
+  to both Exceptions and Matches. Deliberately not a `<table>` rebuild —
+  keeps the row-list identity Phase 15 just established.
+- **Bulk "confirm no-match"** — checkboxes per row (as a sibling of the
+  row's expand button, not nested inside it — a checkbox can't validly
+  nest in a `<button>`), a "select all shown" checkbox, and a bulk
+  action bar with one shared note. Executes as sequential calls to the
+  *existing* `POST /exceptions/{id}/resolve` — no new backend endpoint,
+  matching v2.1's own "no new backend capability" constraint. Best-effort:
+  one failure doesn't block the rest, and failed IDs stay selected for
+  retry. **Exit check verified precisely, not just observed**: bulk-
+  resolving 3 exceptions produced 3 independently fetched `GET
+  /audit/{id}` traces, each showing its own `tier: human` decision with
+  the shared note — never a merged action.
+- **Keyboard shortcuts, evaluated honestly**: Enter/Space to expand a
+  row were already free (native button behavior, no code needed).
+  Added Escape-to-clear-selection when the bulk bar is active — cheap,
+  standard, and verified to correctly *not* fire while focus is inside
+  the bulk note textarea (so typing a note and hitting Escape by habit
+  doesn't wipe out the selection). Broader shortcuts (row-by-row j/k
+  navigation, global letter commands) were evaluated and deliberately
+  not built this phase — they'd need a discoverability affordance (a
+  "?" shortcuts overlay) and careful interaction with the Tab-order fix
+  from Phase 14, disproportionate to a stretch phase with no existing
+  precedent for this pattern in the app. A v2.2+ candidate, not silently
+  dropped.
+- 46/46 frontend tests (9 new: `sortRows`, `recordIdOf`), 82/82 backend,
+  clean build. Live-verified: checkbox clicks don't trigger row
+  expansion (event isolation confirmed), sort control reorders both
+  lists correctly, and the full bulk-select → confirm → verify-audit-
+  trail flow works end to end against real data.
+
+This closes out the v2.1 plan — Phases 13, 14, 15, and 16 are all done.
+
 ---
 
 ## 3. Risks & mitigations
@@ -227,15 +263,23 @@ those are solid, and only if the audit-trail-per-decision principle
 
 ## 4. Success criteria for v2.1
 
-- [ ] Filter bar collapses behind a disclosure with an active-filter
+- [x] Filter bar collapses behind a disclosure with an active-filter
       count; the critique's cognitive-load "chunking"/"minimal choices"
       failures are resolved
-- [ ] Confidence-tier meaning (Exact / Fuzzy / LLM-reasoned /
+- [x] Confidence-tier meaning (Exact / Fuzzy / LLM-reasoned /
       Human-resolved) is discoverable without prior knowledge of the app
-- [ ] The full browse → expand → resolve flow is completable
+      — via hover tooltips (`title`) on every badge and chip; a
+      persistent always-visible legend was evaluated and deliberately
+      left as backlog (P2, not this version's close-out)
+- [x] The full browse → expand → resolve flow is completable
       keyboard-only, with the chevron's accessible-name gap closed
-- [ ] Re-running `/impeccable critique` shows a meaningfully higher
-      score than the 23/40 baseline, and the Design Specificity Verdict
-      no longer reads as generic-dashboard-shaped
-- [ ] (Stretch) bulk resolve and column sort are available, with the
+- [x] Re-running `/impeccable critique` shows a meaningfully higher
+      score than the 23/40 baseline (27/40, full dual-agent re-run,
+      not self-assessment), and the Design Specificity Verdict
+      explicitly credits the provenance palette as content-grounded —
+      though it also names the still-generic Upload & Run tab as the
+      biggest remaining lever, left open rather than claimed fixed
+- [x] (Stretch) bulk resolve and column sort are available, with the
       audit trail still showing one traceable row per resolved record
+      — verified precisely via independent `GET /audit/{id}` traces
+      after a real bulk action, not just observed in the UI

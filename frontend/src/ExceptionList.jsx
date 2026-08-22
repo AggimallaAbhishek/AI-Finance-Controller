@@ -7,6 +7,10 @@ function formatAmount(amount) {
   return `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
 }
 
+export function recordIdOf(exception) {
+  return exception.settlement_ref || exception.bank_ref
+}
+
 // Pure seams, extracted for testing — candidate sourcing/filtering for the
 // resolve-to-match counterpart picker.
 export function findCounterpartCandidates(allExceptions, exception) {
@@ -227,14 +231,98 @@ function ResolveActions({ recordId, candidates, runId, onResolved }) {
   )
 }
 
-function ExceptionRow({ exception, allExceptions, runId, onResolved }) {
+// "Confirm no match" only — "Link to a record" inherently can't be bulked,
+// since each exception needs a different counterpart. One shared note,
+// but onConfirm still submits one resolveException() call per record, so
+// the audit trail gets N distinct tier:human rows, never a merged action.
+function BulkResolveBar({ selectedCount, onConfirmNoMatch, onClear }) {
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [progress, setProgress] = useState(null) // null | {done, total}
+  const [result, setResult] = useState(null) // null | {succeeded, failed: [{id, error}]}
+
+  async function submit(e) {
+    e.preventDefault()
+    setSubmitting(true)
+    setResult(null)
+    const outcome = await onConfirmNoMatch(note, (done, total) => setProgress({ done, total }))
+    setSubmitting(false)
+    setProgress(null)
+    setResult(outcome)
+    if (outcome.failed.length === 0) {
+      setOpen(false)
+      setNote('')
+    }
+  }
+
+  return (
+    <div className="bulk-bar" role="region" aria-label="Bulk actions">
+      <div className="bulk-bar__summary">
+        <span>{selectedCount} selected</span>
+        {!open && !submitting && (
+          <>
+            <button type="button" onClick={() => setOpen(true)}>
+              Confirm no match for {selectedCount}
+            </button>
+            <button type="button" className="bulk-bar__clear" onClick={onClear}>
+              Clear selection
+            </button>
+          </>
+        )}
+      </div>
+
+      {open && !submitting && !result && (
+        <form className="resolve-form" onSubmit={submit}>
+          <label className="resolve-form__field">
+            Note (why? applies to all {selectedCount})
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="e.g. confirmed with finance during periodic no-match review"
+              required
+              rows={2}
+            />
+          </label>
+          <p className="resolve-form__permanence muted">
+            This records {selectedCount} separate, permanent audit entries — one per exception — and can’t be undone.
+          </p>
+          <div className="resolve-form__actions">
+            <button type="button" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" disabled={!note.trim()}>
+              Confirm no match for {selectedCount}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {submitting && progress && (
+        <p className="muted" aria-live="polite">
+          Resolving {progress.done} of {progress.total}…
+        </p>
+      )}
+
+      {result && (
+        <p className={result.failed.length ? 'error-text' : 'muted'} role="status">
+          {result.failed.length === 0
+            ? `Resolved all ${result.succeeded}.`
+            : `Resolved ${result.succeeded} of ${result.succeeded + result.failed.length} — ${result.failed.length} failed (${result.failed.map((f) => f.id).join(', ')}). Still-selected records can be retried.`}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function ExceptionRow({ exception, allExceptions, runId, onResolved, selected, onToggleSelect }) {
   const [expanded, setExpanded] = useState(false)
   const [trace, setTrace] = useState(null)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
 
   const side = exception.settlement_ref ? 'settlement' : 'bank'
-  const recordId = exception.settlement_ref || exception.bank_ref
+  const recordId = recordIdOf(exception)
   const reviewed = exception.tier === 'human'
 
   const candidates = findCounterpartCandidates(allExceptions, exception)
@@ -259,24 +347,33 @@ function ExceptionRow({ exception, allExceptions, runId, onResolved }) {
 
   return (
     <li className="exception-row">
-      <button
-        type="button"
-        className="exception-row__summary"
-        aria-expanded={expanded}
-        aria-label={`${side === 'settlement' ? 'Settlement' : 'Bank'} exception ${recordId}, details`}
-        onClick={toggle}
-      >
-        <span className={`side-badge side-badge--${side}`}>
-          {side === 'settlement' ? 'Settlement' : 'Bank'}
-        </span>
-        <code className="exception-row__id">{recordId}</code>
-        <span className="exception-row__amount">{formatAmount(exception.amount)}</span>
-        <span className="exception-row__reason">{exception.reason}</span>
-        {reviewed && <span className="reviewed-badge">Reviewed</span>}
-        <span className="exception-row__chevron" aria-hidden="true">
-          {expanded ? '−' : '+'}
-        </span>
-      </button>
+      <div className="exception-row__head">
+        <input
+          type="checkbox"
+          className="exception-row__select"
+          checked={selected}
+          onChange={() => onToggleSelect(recordId)}
+          aria-label={`Select ${recordId} for bulk action`}
+        />
+        <button
+          type="button"
+          className="exception-row__summary"
+          aria-expanded={expanded}
+          aria-label={`${side === 'settlement' ? 'Settlement' : 'Bank'} exception ${recordId}, details`}
+          onClick={toggle}
+        >
+          <span className={`side-badge side-badge--${side}`}>
+            {side === 'settlement' ? 'Settlement' : 'Bank'}
+          </span>
+          <code className="exception-row__id">{recordId}</code>
+          <span className="exception-row__amount">{formatAmount(exception.amount)}</span>
+          <span className="exception-row__reason">{exception.reason}</span>
+          {reviewed && <span className="reviewed-badge">Reviewed</span>}
+          <span className="exception-row__chevron" aria-hidden="true">
+            {expanded ? '−' : '+'}
+          </span>
+        </button>
+      </div>
 
       {expanded && (
         <div className="exception-row__detail" aria-live="polite">
@@ -318,6 +415,59 @@ function ExceptionRow({ exception, allExceptions, runId, onResolved }) {
 }
 
 export default function ExceptionList({ exceptions, allExceptions, allCount, runId, onResolved }) {
+  const [selectedIds, setSelectedIds] = useState(new Set())
+
+  // Only counts selections against currently-visible (filtered) rows —
+  // a stale selection from before a filter change just stops mattering
+  // rather than needing an explicit reset effect.
+  const visibleSelectedIds = exceptions.map(recordIdOf).filter((id) => selectedIds.has(id))
+  const allSelected = exceptions.length > 0 && visibleSelectedIds.length === exceptions.length
+
+  // Escape clears the bulk selection — but not while focus is inside a
+  // form field (e.g. typing the bulk note), where Escape shouldn't wipe
+  // out a selection the user is actively acting on.
+  useEffect(() => {
+    if (visibleSelectedIds.length === 0) return
+    function handleKeyDown(e) {
+      if (e.key !== 'Escape') return
+      const tag = document.activeElement?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      setSelectedIds(new Set())
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleSelectedIds.length])
+
+  function toggleSelect(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds(allSelected ? new Set() : new Set(exceptions.map(recordIdOf)))
+  }
+
+  async function handleBulkConfirmNoMatch(note, onProgress) {
+    const ids = [...visibleSelectedIds]
+    const failed = []
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        await resolveException(ids[i], { resolution: 'no_match', note }, runId)
+      } catch (err) {
+        failed.push({ id: ids[i], error: err.message })
+      }
+      onProgress(i + 1, ids.length)
+    }
+    setSelectedIds(new Set(failed.map((f) => f.id)))
+    await onResolved()
+    return { succeeded: ids.length - failed.length, failed }
+  }
+
   function exportCsv() {
     downloadCsv(`exceptions-${runId}.csv`, exceptions, [
       { label: 'side', value: (e) => (e.settlement_ref ? 'settlement' : 'bank') },
@@ -335,10 +485,27 @@ export default function ExceptionList({ exceptions, allExceptions, allCount, run
         <h2>
           Exceptions <span className="muted">({exceptions.length})</span>
         </h2>
-        <button type="button" className="export-button" onClick={exportCsv} disabled={exceptions.length === 0}>
-          Export CSV
-        </button>
+        <div className="list-header__actions">
+          {exceptions.length > 0 && (
+            <label className="list-header__select-all">
+              <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
+              Select all shown
+            </label>
+          )}
+          <button type="button" className="export-button" onClick={exportCsv} disabled={exceptions.length === 0}>
+            Export CSV
+          </button>
+        </div>
       </div>
+
+      {visibleSelectedIds.length > 0 && (
+        <BulkResolveBar
+          selectedCount={visibleSelectedIds.length}
+          onConfirmNoMatch={handleBulkConfirmNoMatch}
+          onClear={() => setSelectedIds(new Set())}
+        />
+      )}
+
       {exceptions.length === 0 ? (
         <p className="empty-state">
           {allCount === 0 ? 'No exceptions — every record matched.' : 'No exceptions match these filters.'}
@@ -346,7 +513,15 @@ export default function ExceptionList({ exceptions, allExceptions, allCount, run
       ) : (
         <ul className="exception-list__items">
           {exceptions.map((e) => (
-            <ExceptionRow key={e.id} exception={e} allExceptions={allExceptions} runId={runId} onResolved={onResolved} />
+            <ExceptionRow
+              key={e.id}
+              exception={e}
+              allExceptions={allExceptions}
+              runId={runId}
+              onResolved={onResolved}
+              selected={selectedIds.has(recordIdOf(e))}
+              onToggleSelect={toggleSelect}
+            />
           ))}
         </ul>
       )}

@@ -15,7 +15,30 @@ export function countActiveFilters(filters) {
   return count
 }
 
-export default function FilterBar({ filters, onChange, showSide, showTier, resultCount }) {
+export const SORT_OPTIONS = [
+  { value: '', label: 'Default order' },
+  { value: 'amount-desc', label: 'Amount: high to low' },
+  { value: 'amount-asc', label: 'Amount: low to high' },
+  { value: 'date-desc', label: 'Date: newest first' },
+  { value: 'date-asc', label: 'Date: oldest first' },
+]
+
+// Pure seam, extracted for testing. sort is one of SORT_OPTIONS' values
+// ("field-direction", or "" for the original API order).
+export function sortRows(rows, sort) {
+  if (!sort) return rows
+  const [field, direction] = sort.split('-')
+  const multiplier = direction === 'desc' ? -1 : 1
+  return [...rows].sort((a, b) => {
+    const av = field === 'amount' ? Number(a.amount ?? 0) : a.date || ''
+    const bv = field === 'amount' ? Number(b.amount ?? 0) : b.date || ''
+    if (av < bv) return -1 * multiplier
+    if (av > bv) return 1 * multiplier
+    return 0
+  })
+}
+
+export default function FilterBar({ filters, onChange, showSide, showTier, resultCount, sort, onSortChange }) {
   const activeCount = countActiveFilters(filters)
   // Starts open only when filters are already active (e.g. returning from
   // the Upload & Run tab with filters still set) — otherwise collapsed, so
@@ -47,6 +70,16 @@ export default function FilterBar({ filters, onChange, showSide, showTier, resul
           {activeCount > 0 && <span className="filter-bar__badge">{activeCount}</span>}
         </button>
         <span className="muted">{resultCount} shown</span>
+        <label className="filter-bar__sort">
+          <span className="sr-only">Sort</span>
+          <select value={sort} onChange={(e) => onSortChange(e.target.value)}>
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.value ? `Sort: ${o.label}` : o.label}
+              </option>
+            ))}
+          </select>
+        </label>
         {activeCount > 0 && (
           <button
             type="button"
