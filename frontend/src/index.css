@@ -1,3 +1,15 @@
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/fraunces-700-latin.woff2') format('woff2');
+  /* Latin + Latin-1 only — the only alphabet this face is actually used
+     for (the H1 title and the match-rate percentage). Amounts elsewhere
+     use ₹, outside this range, and stay in --sans/--mono as before. */
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2122;
+}
+
 :root {
   --text: #6b6375;
   --text-h: #08060d;
@@ -18,11 +30,21 @@
   --success: #15803d;
   --success-bg: rgba(21, 128, 61, 0.1);
   --danger-text: #b91c1c;
+  /* Provenance palette — "what/who decided this," independent of
+     --accent's job as the UI's action color. Reused where the meaning
+     already existed: llm-reasoned reuses --accent (already reads as
+     "reasoning"), human-resolved reuses --success (already the
+     Reviewed badge's color) — only the rule tier needed a new hue. */
+  --tier-rule: #0f766e;
+  --tier-rule-bg: rgba(15, 118, 110, 0.1);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
+  /* Display voice, reserved for the two real display moments (H1, the
+     match-rate figure) — everything else stays in --sans/--mono. */
+  --display: 'Fraunces', var(--sans);
 
   font: 16px/145% var(--sans);
   color-scheme: light dark;
@@ -50,6 +72,8 @@
     --success: #4ade80;
     --success-bg: rgba(74, 222, 128, 0.12);
     --danger-text: #f87171;
+    --tier-rule: #2dd4bf;
+    --tier-rule-bg: rgba(45, 212, 191, 0.15);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
   }
@@ -70,10 +94,19 @@ body {
 }
 
 h1, h2 {
-  font-family: var(--sans);
-  font-weight: 600;
   color: var(--text-h);
   margin: 0;
+}
+
+h1 {
+  font-family: var(--display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-family: var(--sans);
+  font-weight: 600;
 }
 
 code {
