@@ -482,6 +482,53 @@ original P1s already resolved by earlier phases, and both P1s found by
 *this* re-critique fixed the same session they were found. See
 `.impeccable/critique/` for both full snapshots.
 
+### v2.1 final verification — `MatchList` rows didn't inherit `ExceptionList`'s flex-shrink wrapper, overflowing the page on real LLM-matched data
+
+**Issue:** a post-close-out systematic-debugging pass (live against a
+real 100-record run, not just lint/build/tests) found the Matches tab
+overflowing the page horizontally — `document.documentElement.scrollWidth`
+exceeded `window.innerWidth` by 800px+. It only showed up on the 10
+`llm-reasoned` matches, whose reason text is a full generated sentence
+(up to 256 chars) rather than the short fixed-form text `exact`/`fuzzy`
+matches use, so it was invisible on typical fixture data and never
+caught by a visual read of the first few rows.
+
+**Root cause:** `ExceptionList.jsx` wraps its row button in a
+`<div className="exception-row__head">` (`display: flex`), which is
+what makes `.exception-row__summary { flex: 1; min-width: 0 }` actually
+take effect and let `.exception-row__reason`'s `overflow: hidden;
+text-overflow: ellipsis` truncate long text. `MatchList.jsx` never got
+that wrapper — its row button was a direct child of `<li>`, a plain
+block box, so the button's own `flex: 1; min-width: 0` had no effect
+(flex properties are inert on an element that isn't itself a flex item).
+The `<button>` shrink-to-fit its own content instead, and every match
+row silently sized itself to its reason text's full width — confirmed
+by measuring all 90 rows: button width tracked reason-text length
+1:1 (844px for 50 chars, 2333px for 256 chars) instead of the uniform
+column width a working flex layout produces.
+
+**Fix:** wrapped `MatchRow`'s button in the same `.exception-row__head`
+div `ExceptionList.jsx` uses (`MatchList.jsx`). Verified precisely, not
+just visually: all 90 rows now measure a uniform width regardless of
+reason length, `scrollWidth` no longer exceeds `innerWidth`, and row
+expand/collapse still works post-fix. Lint, build, and the full 46-test
+Vitest suite stay clean — this is a pure-CSS/JSX structural fix with no
+behavior change, so no new test was added (the existing suite has no
+DOM-rendering harness; the bug was a layout defect, not a logic one,
+and was caught and verified live in-browser instead).
+
+Also worth recording since it shaped how long this took to isolate:
+the same debugging session's *first* two "failures" it found (a
+"Couldn't load the dashboard: Failed to fetch" error, then intermittent
+`503`s on `/runs`) turned out to be entirely self-inflicted — a second
+backend and a second frontend dev server started on top of ones already
+running, landing on the wrong port and the wrong CORS origin. Neither
+was a real app bug; both resolved by killing the redundant processes
+and re-testing against the app's actual already-running instances.
+Recorded here as a reminder that "reproduce against a freshly started
+dev server" is not automatically a clean baseline in a repo where
+`npm run dev` may already be running.
+
 ---
 
 ## Template for new entries

@@ -246,6 +246,19 @@ those are solid, and only if the audit-trail-per-decision principle
   lists correctly, and the full bulk-select → confirm → verify-audit-
   trail flow works end to end against real data.
 
+**Final verification (post-close-out):** a `/systematic-debugging` pass
+run live against a real 100-record run (not just lint/build/tests)
+found and fixed one real regression the Phase 13–16 work had left in
+place: `MatchList.jsx` rows didn't inherit the flex-shrink wrapper
+`ExceptionList.jsx` uses, so the 10 `llm-reasoned` matches — whose
+reason text is a full generated sentence rather than short fixed-form
+text — overflowed the page horizontally instead of truncating. Root
+cause, fix, and precise verification (all 90 rows measured to a
+uniform width post-fix, `scrollWidth` no longer exceeds `innerWidth`)
+in `docs/BUILD-CHALLENGES.md`. Lint, build, and the 46-test Vitest
+suite stayed clean throughout — a structural JSX/CSS fix, no behavior
+change.
+
 This closes out the v2.1 plan — Phases 13, 14, 15, and 16 are all done.
 
 ---

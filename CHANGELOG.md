@@ -42,6 +42,11 @@ not a fresh guess at what needed polish.
   dropped: cancelling an in-flight reconciliation job and true
   undo-after-resolve both need new backend capability outside this
   version's scope — documented as v2.2+ candidates
+- **Final verification**: a post-close-out `/systematic-debugging` pass
+  against a real 100-record run caught and fixed one last regression —
+  `MatchList` rows missing the flex-shrink wrapper `ExceptionList` rows
+  have, so the 10 LLM-reasoned matches (full generated-sentence reason
+  text) overflowed the page horizontally instead of truncating
 
 See `docs/BUILD-CHALLENGES.md` for full root-cause writeups of every
 bug found this version, and `.impeccable/critique/` for both critique
