@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { getTrace, resolveException } from './api'
 import { downloadCsv } from './csv'
-import { BankIcon, ReceiptIcon } from './Icons'
+import { BankIcon, PersonIcon, ReceiptIcon, RobotIcon, RuleIcon } from './Icons'
+
+// Exceptions carry a `tier` (who/what produced the open exception —
+// rule, llm, skipped-llm, or a prior human resolution), not the
+// `confidence` value matches use — so it needs its own small icon/label/
+// provenance-group map rather than reusing tiers.js.
+const EXCEPTION_TIER_META = {
+  rule: { Icon: RuleIcon, label: 'Rule', group: 'rule' },
+  'skipped-llm': { Icon: RuleIcon, label: 'Rule', group: 'rule' },
+  llm: { Icon: RobotIcon, label: 'LLM', group: 'llm' },
+  human: { Icon: PersonIcon, label: 'Human', group: 'human' },
+}
 
 function formatAmount(amount) {
   if (amount === null || amount === undefined) return '—'
@@ -381,33 +392,55 @@ function ExceptionRow({ exception, allExceptions, runId, onResolved, selected, o
         <div className="exception-row__detail" aria-live="polite">
           {loading && <p className="muted">Loading source record…</p>}
           {error && <p className="error-text">Couldn't load detail: {error}</p>}
-          <p className="exception-row__reason-full">{exception.reason}</p>
-          {record && (
-            <dl className="detail-grid">
-              <div>
-                <dt>Reference ID</dt>
-                <dd>{record.reference_id}</dd>
+          {record ? (
+            <div className="evidence-grid evidence-grid--exception">
+              <div className="evidence-card">
+                <h4 className="evidence-card__title">
+                  {side === 'settlement' ? <ReceiptIcon /> : <BankIcon />}
+                  Target {side === 'settlement' ? 'Settlement' : 'Bank'} Record
+                </h4>
+                <dl className="detail-grid">
+                  <div>
+                    <dt>Reference ID</dt>
+                    <dd>{record.reference_id}</dd>
+                  </div>
+                  <div>
+                    <dt>Amount</dt>
+                    <dd>&#8377;{Number(record.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</dd>
+                  </div>
+                  <div>
+                    <dt>Date</dt>
+                    <dd>{record.date}</dd>
+                  </div>
+                  {side === 'settlement' ? (
+                    <div>
+                      <dt>Status</dt>
+                      <dd>{record.status}</dd>
+                    </div>
+                  ) : (
+                    <div>
+                      <dt>Narration</dt>
+                      <dd>{record.narration}</dd>
+                    </div>
+                  )}
+                </dl>
               </div>
-              <div>
-                <dt>Amount</dt>
-                <dd>&#8377;{Number(record.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</dd>
-              </div>
-              <div>
-                <dt>Date</dt>
-                <dd>{record.date}</dd>
-              </div>
-              {side === 'settlement' ? (
-                <div>
-                  <dt>Status</dt>
-                  <dd>{record.status}</dd>
-                </div>
-              ) : (
-                <div>
-                  <dt>Narration</dt>
-                  <dd>{record.narration}</dd>
-                </div>
-              )}
-            </dl>
+              {(() => {
+                const meta = EXCEPTION_TIER_META[exception.tier] || EXCEPTION_TIER_META.rule
+                const TierIcon = meta.Icon
+                return (
+                  <div className={`evidence-card evidence-card--reasoning evidence-card--${meta.group}`}>
+                    <h4 className="evidence-card__title">
+                      <TierIcon />
+                      {meta.label} Reasoning
+                    </h4>
+                    <p>{exception.reason}</p>
+                  </div>
+                )
+              })()}
+            </div>
+          ) : (
+            <p className="exception-row__reason-full">{exception.reason}</p>
           )}
           <ResolveActions recordId={recordId} candidates={candidates} runId={runId} onResolved={onResolved} />
         </div>

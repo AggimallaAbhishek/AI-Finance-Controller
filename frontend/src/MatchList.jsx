@@ -2,13 +2,32 @@ import { useState } from 'react'
 import { getTrace } from './api'
 import { downloadCsv } from './csv'
 import { TIER_GROUPS, TIER_HINTS, TIER_LABELS } from './tiers'
-import { PersonIcon, RobotIcon, RuleIcon } from './Icons'
+import { BankIcon, LinkIcon, PersonIcon, ReceiptIcon, RobotIcon, RuleIcon } from './Icons'
 
 const TIER_ICONS = { rule: RuleIcon, llm: RobotIcon, human: PersonIcon }
 
 function formatAmount(amount) {
   if (amount === null || amount === undefined) return '—'
   return `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+}
+
+// Connector badges between the two evidence cards — a plain, computed
+// fact about the pairing (amounts equal? dates equal?), not a repeat of
+// the model's own confidence claim.
+function ConnectorBadges({ settlementRecord, bankRecord }) {
+  const sameAmount = Number(settlementRecord.amount) === Number(bankRecord.amount)
+  const sameDate = settlementRecord.date === bankRecord.date
+  return (
+    <div className="evidence-connector">
+      <LinkIcon />
+      <span className={`evidence-connector__badge${sameAmount ? ' evidence-connector__badge--match' : ''}`}>
+        {sameAmount ? 'Amount match' : 'Amount differs'}
+      </span>
+      <span className={`evidence-connector__badge${sameDate ? ' evidence-connector__badge--match' : ''}`}>
+        {sameDate ? 'Same date' : 'Date differs'}
+      </span>
+    </div>
+  )
 }
 
 function MatchRow({ match, runId }) {
@@ -68,38 +87,67 @@ function MatchRow({ match, runId }) {
         <div className="exception-row__detail" aria-live="polite">
           {loading && <p className="muted">Loading source records…</p>}
           {error && <p className="error-text">Couldn't load detail: {error}</p>}
-          <p className="exception-row__reason-full">{match.reason}</p>
-          {settlementRecord && (
-            <dl className="detail-grid">
-              <div>
-                <dt>Settlement ref</dt>
-                <dd>{settlementRecord.reference_id}</dd>
+          {settlementRecord ? (
+            <div className="evidence-grid">
+              <div className="evidence-card">
+                <h4 className="evidence-card__title">
+                  <ReceiptIcon />
+                  Ledger Details (Side A)
+                </h4>
+                <dl className="detail-grid">
+                  <div>
+                    <dt>Ref</dt>
+                    <dd>{settlementRecord.reference_id}</dd>
+                  </div>
+                  <div>
+                    <dt>Amount</dt>
+                    <dd>{formatAmount(settlementRecord.amount)}</dd>
+                  </div>
+                  <div>
+                    <dt>Date</dt>
+                    <dd>{settlementRecord.date}</dd>
+                  </div>
+                </dl>
               </div>
-              <div>
-                <dt>Settlement amount</dt>
-                <dd>{formatAmount(settlementRecord.amount)}</dd>
-              </div>
-              <div>
-                <dt>Settlement date</dt>
-                <dd>{settlementRecord.date}</dd>
-              </div>
+
+              {bankRecord && <ConnectorBadges settlementRecord={settlementRecord} bankRecord={bankRecord} />}
+
               {bankRecord && (
-                <>
-                  <div>
-                    <dt>Bank narration</dt>
-                    <dd>{bankRecord.narration}</dd>
-                  </div>
-                  <div>
-                    <dt>Bank amount</dt>
-                    <dd>{formatAmount(bankRecord.amount)}</dd>
-                  </div>
-                  <div>
-                    <dt>Bank date</dt>
-                    <dd>{bankRecord.date}</dd>
-                  </div>
-                </>
+                <div className="evidence-card">
+                  <h4 className="evidence-card__title">
+                    <BankIcon />
+                    Bank Details (Side B)
+                  </h4>
+                  <dl className="detail-grid">
+                    <div>
+                      <dt>Narration</dt>
+                      <dd>{bankRecord.narration}</dd>
+                    </div>
+                    <div>
+                      <dt>Amount</dt>
+                      <dd>{formatAmount(bankRecord.amount)}</dd>
+                    </div>
+                    <div>
+                      <dt>Date</dt>
+                      <dd>{bankRecord.date}</dd>
+                    </div>
+                  </dl>
+                </div>
               )}
-            </dl>
+
+              <div
+                className={`evidence-card evidence-card--reasoning evidence-card--${tierGroup || 'rule'}`}
+                style={{ gridColumn: '1 / -1' }}
+              >
+                <h4 className="evidence-card__title">
+                  {TierIcon && <TierIcon />}
+                  {TIER_LABELS[match.confidence] || match.confidence} Reasoning
+                </h4>
+                <p>{match.reason}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="exception-row__reason-full">{match.reason}</p>
           )}
         </div>
       )}

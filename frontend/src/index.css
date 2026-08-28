@@ -806,6 +806,106 @@ button {
   overflow-wrap: anywhere;
 }
 
+/* Evidence Grid — the side-by-side "target record vs. reasoning" layout
+   used by both the Exceptions detail panel (record + why-open) and the
+   Matches detail panel (side A + side B + why-matched). Grounded in real
+   audit-trail data (reason/tier/confidence from getTrace) rather than the
+   Stitch mock's invented confidence percentage. */
+.evidence-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
+.evidence-grid--exception {
+  grid-template-columns: 1fr 1fr;
+}
+
+.evidence-card {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 12px 14px;
+}
+
+.evidence-card__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.evidence-card .detail-grid {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.evidence-card--reasoning {
+  background: var(--surface);
+  border-left: 3px solid var(--border);
+}
+
+.evidence-card--reasoning p {
+  margin: 0;
+  color: var(--text-h);
+  line-height: 1.55;
+  font-size: 13.5px;
+}
+
+.evidence-card--rule.evidence-card--reasoning {
+  border-left-color: var(--tier-rule);
+}
+
+.evidence-card--llm.evidence-card--reasoning {
+  border-left-color: var(--tier-llm);
+}
+
+.evidence-card--human.evidence-card--reasoning {
+  border-left-color: var(--success);
+}
+
+.evidence-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 2px;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.evidence-connector svg {
+  width: 16px;
+  height: 16px;
+}
+
+.evidence-connector__badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.evidence-connector__badge--match {
+  background: var(--success-bg);
+  color: var(--success);
+  border-color: transparent;
+}
+
 .empty-state {
   border: 1px dashed var(--border);
   border-radius: 8px;
@@ -1836,6 +1936,16 @@ button {
 
   .overview-card__rate {
     font-size: 28px;
+  }
+
+  .evidence-grid,
+  .evidence-grid--exception {
+    grid-template-columns: 1fr;
+  }
+
+  .evidence-connector {
+    flex-direction: row;
+    padding: 4px 0;
   }
 
   .dashboard__chat {
