@@ -1,4 +1,4 @@
-import { MenuIcon } from './Icons'
+import { PlusIcon } from './Icons'
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -7,13 +7,13 @@ const TABS = [
   { id: 'upload', label: 'Upload & Run' },
 ]
 
-export default function TopBar({ activeTab, onSelectTab, onOpenSidebar }) {
+export default function TopBar({ activeTab, onSelectTab, runId }) {
   return (
     <header className="topbar">
-      <button type="button" className="topbar__menu" onClick={onOpenSidebar} aria-label="Open navigation">
-        <MenuIcon />
-      </button>
-      <div className="topbar__brand">AI Finance Controller</div>
+      <div className="topbar__brand-group">
+        <span className="topbar__brand">AI Finance Controller</span>
+        {runId && <span className="topbar__run">Run {runId}</span>}
+      </div>
       <nav className="topbar__tabs" role="tablist" aria-label="Sections">
         {TABS.map((t) => (
           <button
@@ -28,6 +28,15 @@ export default function TopBar({ activeTab, onSelectTab, onOpenSidebar }) {
           </button>
         ))}
       </nav>
+      <button
+        type="button"
+        className="topbar__cta"
+        aria-label="Start a new reconciliation"
+        onClick={() => onSelectTab('upload')}
+      >
+        <PlusIcon />
+        <span>New Reconciliation</span>
+      </button>
     </header>
   )
 }
