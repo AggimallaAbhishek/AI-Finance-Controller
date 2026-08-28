@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getExceptions, getMatches, getRuns } from './api'
-import StatsHeader from './StatsHeader'
+import Sidebar from './Sidebar'
+import TopBar from './TopBar'
+import Overview from './Overview'
 import ExceptionList from './ExceptionList'
 import MatchList from './MatchList'
-import RunPicker from './RunPicker'
 import ReconcileRunner from './ReconcileRunner'
 import UploadRunner from './UploadRunner'
 import FilterBar, { applyFilters, DEFAULT_FILTERS, sortRows } from './FilterBar'
@@ -17,7 +18,8 @@ export default function App() {
   const [matches, setMatches] = useState([])
   const [exceptions, setExceptions] = useState([])
   const [chatOpen, setChatOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState('exceptions') // exceptions | matches | upload
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState('overview') // overview | exceptions | matches | upload
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [sort, setSort] = useState('')
 
@@ -63,7 +65,7 @@ export default function App() {
     await handleReconcileComplete(newRunId)
     // Switch off the Upload & Run tab so the new run's results are
     // immediately visible instead of a completed, static progress bar.
-    setActiveTab('exceptions')
+    setActiveTab('overview')
   }
 
   // The run's stored stats are a snapshot from when the automated pipeline
@@ -143,61 +145,42 @@ export default function App() {
   }
 
   return (
-    <div className="dashboard">
-      <StatsHeader run={run} stats={liveStats} />
+    <div className="app-shell">
+      <Sidebar
+        runId={run.run_id}
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
 
-      <div className="dashboard__toolbar">
-        <RunPicker runs={runs} currentRunId={run.run_id} onSelect={selectRun} />
-        <ReconcileRunner onComplete={handleReconcileComplete} />
-      </div>
+      <div className="app-shell__main">
+        <TopBar activeTab={activeTab} onSelectTab={setActiveTab} onOpenSidebar={() => setSidebarOpen(true)} />
 
-      <div className="dashboard__body">
-        <main className="dashboard__main">
-          <div className="tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'exceptions'}
-              className={`tab${activeTab === 'exceptions' ? ' tab--active' : ''}`}
-              onClick={() => setActiveTab('exceptions')}
-            >
-              Exceptions
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'matches'}
-              className={`tab${activeTab === 'matches' ? ' tab--active' : ''}`}
-              onClick={() => setActiveTab('matches')}
-            >
-              Matches
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'upload'}
-              className={`tab${activeTab === 'upload' ? ' tab--active' : ''}`}
-              onClick={() => setActiveTab('upload')}
-            >
-              Upload &amp; Run
-            </button>
-          </div>
-
-          {activeTab === 'upload' ? (
-            <UploadRunner onComplete={handleUploadComplete} />
-          ) : (
-            <>
-              <FilterBar
-                filters={filters}
-                onChange={setFilters}
-                showSide={activeTab === 'exceptions'}
-                showTier={activeTab === 'matches'}
-                resultCount={activeTab === 'exceptions' ? filteredExceptions.length : filteredMatches.length}
-                sort={sort}
-                onSortChange={setSort}
+        <div className="app-shell__body">
+          <main className="app-shell__page">
+            {activeTab === 'overview' && (
+              <Overview
+                run={run}
+                stats={liveStats}
+                runs={runs}
+                onSelectRun={selectRun}
+                onReconcileComplete={handleReconcileComplete}
+                exceptions={exceptions}
+                onViewExceptions={() => setActiveTab('exceptions')}
               />
+            )}
 
-              {activeTab === 'exceptions' ? (
+            {activeTab === 'exceptions' && (
+              <>
+                <FilterBar
+                  filters={filters}
+                  onChange={setFilters}
+                  showSide
+                  resultCount={filteredExceptions.length}
+                  sort={sort}
+                  onSortChange={setSort}
+                />
                 <ExceptionList
                   exceptions={filteredExceptions}
                   allExceptions={exceptions}
@@ -205,15 +188,45 @@ export default function App() {
                   runId={run.run_id}
                   onResolved={() => refresh(run.run_id)}
                 />
-              ) : (
-                <MatchList matches={filteredMatches} runId={run.run_id} />
-              )}
-            </>
-          )}
-        </main>
+              </>
+            )}
 
-        <div className={`dashboard__chat${chatOpen ? ' dashboard__chat--open' : ''}`}>
-          <ChatPanel runId={run.run_id} />
+            {activeTab === 'matches' && (
+              <>
+                <div className="page-header">
+                  <h1>Reconciled Matches</h1>
+                  <p className="muted">Review verified pairings from run {run.run_id}.</p>
+                </div>
+                <FilterBar
+                  filters={filters}
+                  onChange={setFilters}
+                  showTier
+                  resultCount={filteredMatches.length}
+                  sort={sort}
+                  onSortChange={setSort}
+                />
+                <MatchList matches={filteredMatches} runId={run.run_id} />
+              </>
+            )}
+
+            {activeTab === 'upload' && (
+              <>
+                <div className="page-header">
+                  <h1>Initiate Reconciliation</h1>
+                  <p className="muted">
+                    Upload your settlement file and corresponding bank statement. The system applies deterministic
+                    rules for exact matches, then LLM reasoning to resolve fuzzy discrepancies, before presenting
+                    exceptions for manual review.
+                  </p>
+                </div>
+                <UploadRunner onComplete={handleUploadComplete} />
+              </>
+            )}
+          </main>
+
+          <div className={`dashboard__chat${chatOpen ? ' dashboard__chat--open' : ''}`}>
+            <ChatPanel runId={run.run_id} />
+          </div>
         </div>
       </div>
 

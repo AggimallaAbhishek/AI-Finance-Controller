@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { getTrace } from './api'
 import { downloadCsv } from './csv'
 import { TIER_GROUPS, TIER_HINTS, TIER_LABELS } from './tiers'
+import { PersonIcon, RobotIcon, RuleIcon } from './Icons'
+
+const TIER_ICONS = { rule: RuleIcon, llm: RobotIcon, human: PersonIcon }
 
 function formatAmount(amount) {
   if (amount === null || amount === undefined) return '—'
@@ -32,6 +35,8 @@ function MatchRow({ match, runId }) {
 
   const settlementRecord = trace?.settlement_record
   const bankRecord = trace?.counterpart_bank_record
+  const tierGroup = TIER_GROUPS[match.confidence]
+  const TierIcon = TIER_ICONS[tierGroup]
 
   return (
     <li className="exception-row">
@@ -44,9 +49,10 @@ function MatchRow({ match, runId }) {
           onClick={toggle}
         >
           <span
-            className={`tier-badge${TIER_GROUPS[match.confidence] ? ` tier-badge--${TIER_GROUPS[match.confidence]}` : ''}`}
+            className={`tier-badge${tierGroup ? ` tier-badge--${tierGroup}` : ''}`}
             title={TIER_HINTS[match.confidence]}
           >
+            {TierIcon && <TierIcon />}
             {TIER_LABELS[match.confidence] || match.confidence}
           </span>
           <code className="exception-row__id">{match.settlement_ref}</code>

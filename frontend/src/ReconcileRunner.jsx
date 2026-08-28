@@ -2,7 +2,7 @@ import { startReconcileAsync } from './api'
 import { useReconcileJob } from './useReconcileJob'
 import ReconcileProgress from './ReconcileProgress'
 
-export default function ReconcileRunner({ onComplete }) {
+export default function ReconcileRunner({ onComplete, icon }) {
   const { job, start, running } = useReconcileJob(onComplete)
 
   return (
@@ -13,6 +13,7 @@ export default function ReconcileRunner({ onComplete }) {
         onClick={() => start(startReconcileAsync)}
         disabled={running}
       >
+        {icon}
         {running ? 'Running…' : 'Run reconciliation'}
       </button>
       <ReconcileProgress job={job} />

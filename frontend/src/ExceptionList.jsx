@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getTrace, resolveException } from './api'
 import { downloadCsv } from './csv'
+import { BankIcon, ReceiptIcon } from './Icons'
 
 function formatAmount(amount) {
   if (amount === null || amount === undefined) return '—'
@@ -363,6 +364,7 @@ function ExceptionRow({ exception, allExceptions, runId, onResolved, selected, o
           onClick={toggle}
         >
           <span className={`side-badge side-badge--${side}`}>
+            {side === 'settlement' ? <ReceiptIcon /> : <BankIcon />}
             {side === 'settlement' ? 'Settlement' : 'Bank'}
           </span>
           <code className="exception-row__id">{recordId}</code>
