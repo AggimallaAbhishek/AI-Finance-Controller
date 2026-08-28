@@ -1,52 +1,51 @@
-@font-face {
-  font-family: 'Fraunces';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('./assets/fonts/fraunces-700-latin.woff2') format('woff2');
-  /* Latin + Latin-1 only — the only alphabet this face is actually used
-     for (the H1 title and the match-rate percentage). Amounts elsewhere
-     use ₹, outside this range, and stay in --sans/--mono as before. */
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2122;
-}
-
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --surface: #faf9fc;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #9333ea;
-  --accent-bg: rgba(147, 51, 234, 0.1);
-  --accent-border: rgba(147, 51, 234, 0.5);
-  /* Filled backgrounds (buttons) carrying white text need more contrast
-     than --accent's job as text-on-page color — measured 4.5:1+ against
-     #fff in both themes, unlike --accent which is tuned per-theme against
-     the page background instead. */
-  --accent-solid: #7c3aed;
+  /* Audit-Grade Ledger — Stitch design system (projects/11485056404791436717).
+     Surfaces/text follow the surface/on-surface tokens; --accent is the
+     general interactive/navy tint while --accent-solid is the spec's
+     "Primary: Solid Deep Navy" button fill. Provenance colors are kept
+     independent of --accent so a primary CTA never gets confused with an
+     LLM-reasoned result. */
+  --text: #45464d;
+  --text-h: #1b1b1d;
+  --bg: #fcf8fa;
+  --surface: #f6f3f5;
+  --border: #e2e8f0;
+  --code-bg: #eae7e9;
+  --accent: #515f74;
+  --accent-bg: rgba(81, 95, 116, 0.1);
+  --accent-border: rgba(81, 95, 116, 0.45);
+  --accent-solid: #0f172a;
   --warn: #b45309;
   --warn-bg: rgba(180, 83, 9, 0.1);
   --success: #15803d;
   --success-bg: rgba(21, 128, 61, 0.1);
-  --danger-text: #b91c1c;
+  --danger-text: #ba1a1a;
   /* Provenance palette — "what/who decided this," independent of
-     --accent's job as the UI's action color. Reused where the meaning
-     already existed: llm-reasoned reuses --accent (already reads as
-     "reasoning"), human-resolved reuses --success (already the
-     Reviewed badge's color) — only the rule tier needed a new hue. */
+     --accent's job as the UI's action color. Human-resolved reuses
+     --success (already the Reviewed badge's color); rule and llm each
+     get a dedicated hue per the design system's provenance spec. */
   --tier-rule: #0f766e;
   --tier-rule-bg: rgba(15, 118, 110, 0.1);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --tier-llm: #54579e;
+  --tier-llm-bg: rgba(84, 87, 158, 0.12);
+  /* Side A/B — structural "which feed is this from" metadata, kept out
+     of both the action palette and the provenance palette so it never
+     reads as a trust signal. Slate = internal settlement, Steel =
+     external bank feed. */
+  --side-a: #64748b;
+  --side-a-bg: rgba(100, 116, 139, 0.12);
+  --side-b: #3f6b83;
+  --side-b-bg: rgba(63, 107, 131, 0.12);
+  --shadow: rgba(0, 0, 0, 0.1) 0 2px 4px;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
   /* Display voice, reserved for the two real display moments (H1, the
      match-rate figure) — everything else stays in --sans/--mono. */
-  --display: 'Fraunces', var(--sans);
+  --display: 'Hanken Grotesk', var(--sans);
 
   font: 16px/145% var(--sans);
+  font-variant-numeric: tabular-nums;
   color-scheme: light dark;
   color: var(--text);
   background: var(--bg);
@@ -58,15 +57,16 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --surface: #1b1c23;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
+    --text: #94a3b8;
+    --text-h: #f1f5f9;
+    --bg: #020617;
+    --surface: #0f172a;
+    --border: #1e293b;
+    --code-bg: #16233a;
+    --accent: #94a3b8;
+    --accent-bg: rgba(148, 163, 184, 0.15);
+    --accent-border: rgba(148, 163, 184, 0.4);
+    --accent-solid: #334155;
     --warn: #fbbf24;
     --warn-bg: rgba(251, 191, 36, 0.12);
     --success: #4ade80;
@@ -74,8 +74,13 @@
     --danger-text: #f87171;
     --tier-rule: #2dd4bf;
     --tier-rule-bg: rgba(45, 212, 191, 0.15);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    --tier-llm: #9497e0;
+    --tier-llm-bg: rgba(148, 151, 224, 0.18);
+    --side-a: #94a3b8;
+    --side-a-bg: rgba(148, 163, 184, 0.15);
+    --side-b: #67a8c4;
+    --side-b-bg: rgba(103, 168, 196, 0.15);
+    --shadow: rgba(0, 0, 0, 0.4) 0 2px 6px;
   }
 }
 
@@ -238,7 +243,7 @@ button {
 }
 
 .stats-header__figure--llm {
-  color: var(--accent);
+  color: var(--tier-llm);
 }
 
 .stats-header__figure--human {
@@ -318,12 +323,10 @@ button {
   background: var(--surface);
 }
 
-/* Neutral, bordered treatment — "which side" is structural metadata
-   (where does this record come from), not a trust signal, so it
-   deliberately does NOT borrow a color from either the action palette
-   or the tier-provenance palette. Reusing --accent here (as it did
-   before) meant the same violet stood for "click this," "the LLM
-   decided this," and "this is the settlement side" all at once. */
+/* Structural "which side" metadata, not a trust signal — kept out of
+   both the action palette and the tier-provenance palette. Side A
+   (Slate) marks internal settlement data, Side B (Steel) marks the
+   external bank feed, per the design system's Functional Neutrals. */
 .side-badge {
   flex-shrink: 0;
   font-size: 11px;
@@ -332,14 +335,14 @@ button {
   letter-spacing: 0.04em;
   padding: 3px 8px;
   border-radius: 999px;
-  background: var(--surface);
-  color: var(--text-h);
-  border: 1px solid var(--border);
+  background: var(--side-a-bg);
+  color: var(--side-a);
+  border: 1px solid transparent;
 }
 
 .side-badge--bank {
-  background: var(--warn-bg);
-  color: var(--warn);
+  background: var(--side-b-bg);
+  color: var(--side-b);
   border-color: transparent;
 }
 
@@ -427,7 +430,7 @@ button {
 .resolve-actions button {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 6px 12px;
   font-size: 13px;
   cursor: pointer;
@@ -465,7 +468,7 @@ button {
   letter-spacing: normal;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--bg);
   color: var(--text-h);
   resize: vertical;
@@ -485,7 +488,7 @@ button {
 .resolve-form__actions button[type='button'] {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 6px 12px;
   cursor: pointer;
   color: var(--text);
@@ -494,7 +497,7 @@ button {
 .resolve-form__actions button[type='submit'] {
   background: var(--accent-solid);
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 6px 14px;
   color: #fff;
   font-weight: 600;
@@ -518,7 +521,7 @@ button {
   gap: 8px;
   margin-top: 12px;
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--success-bg);
   color: var(--success);
   font-size: 13px;
@@ -604,7 +607,7 @@ button {
   font-size: 13px;
   padding: 6px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--bg);
   color: var(--text-h);
   max-width: 320px;
@@ -635,7 +638,7 @@ button {
   background: var(--accent-solid);
   color: #fff;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 8px 16px;
   font-weight: 600;
   font-size: 13px;
@@ -772,7 +775,7 @@ button {
   gap: 6px;
   background: none;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 5px 10px;
   font: inherit;
   font-size: 13px;
@@ -804,7 +807,7 @@ button {
   font-size: 13px;
   padding: 5px 8px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--bg);
   color: var(--text-h);
 }
@@ -840,7 +843,7 @@ button {
   font-size: 13px;
   padding: 6px 8px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--bg);
   color: var(--text-h);
   width: 128px;
@@ -902,7 +905,7 @@ button {
 }
 
 .filter-chip__dot--llm {
-  background: var(--accent);
+  background: var(--tier-llm);
 }
 
 .filter-chip__dot--human {
@@ -977,7 +980,7 @@ button {
 .export-button {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 6px 12px;
   font-size: 13px;
   color: var(--text-h);
@@ -1008,19 +1011,28 @@ button {
   letter-spacing: 0.04em;
   padding: 3px 8px;
   border-radius: 999px;
-  background: var(--accent-bg);
-  color: var(--accent);
+  background: var(--surface);
+  color: var(--text-h);
+  border: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .tier-badge--rule {
   background: var(--tier-rule-bg);
   color: var(--tier-rule);
+  border-color: transparent;
+}
+
+.tier-badge--llm {
+  background: var(--tier-llm-bg);
+  color: var(--tier-llm);
+  border-color: transparent;
 }
 
 .tier-badge--human {
   background: var(--success-bg);
   color: var(--success);
+  border-color: transparent;
 }
 
 /* ---------- chat panel ---------- */
@@ -1069,7 +1081,7 @@ button {
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 8px 10px;
   cursor: pointer;
   color: var(--text-h);
@@ -1216,11 +1228,18 @@ button {
   border-top: 1px solid var(--border);
 }
 
+/* Focus ring uses the LLM-reasoned provenance color rather than the
+   generic --accent — signals "you're talking to the AI" specifically,
+   per the design system's Slide-over Chat spec. */
+.chat-panel__input input:focus-visible {
+  outline-color: var(--tier-llm);
+}
+
 .chat-panel__input input {
   flex: 1;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--bg);
   color: var(--text-h);
   font-size: 14px;
@@ -1229,7 +1248,7 @@ button {
 .chat-panel__input button {
   padding: 8px 14px;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--accent-solid);
   color: #fff;
   font-weight: 600;

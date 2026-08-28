@@ -4,7 +4,7 @@
 // the places they're shown.
 //
 // `group` drives the provenance color palette (see index.css's
-// --tier-rule/--accent/--success roles): every rule-tier confidence
+// --tier-rule/--tier-llm/--success roles): every rule-tier confidence
 // (exact/fuzzy-*) shares one "rule" color — they're all "the deterministic
 // engine decided this," differentiated by label, not hue — while
 // llm-reasoned and human-resolved each get their own.
