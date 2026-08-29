@@ -531,6 +531,44 @@ dev server" is not automatically a clean baseline in a repo where
 
 ---
 
+### Scale-testing — parallelizing the LLM tier overwhelmed the Ollama cloud endpoint's concurrency limit
+
+**Issue:** after parallelizing `reconcile.py`'s LLM tier (Tier 4) to fire up
+to `LLM_MAX_WORKERS=8` concurrent Ollama calls instead of one at a time,
+running the real (non-mocked) engine against `data/batch_1000` produced
+far worse match quality than the sequential version — 69 of the 100
+LLM-eligible settlements exhausted all 3 retries and fell back to a false
+"no match" exception. The backend log showed the actual cause immediately:
+`LLM call failed ... (too many concurrent requests (status code: 429)),
+gave up`, repeated for the same handful of settlements. Caught before
+trusting the run's output, by reading `docs/BUILD-CHALLENGES.md`-style log
+output rather than only the final accuracy number.
+
+**Investigation:** reproduced directly against the real endpoint rather
+than guessing a safe worker count — a standalone concurrency probe
+(`ThreadPoolExecutor` firing N concurrent `ollama.chat()` calls against
+`gpt-oss:20b-cloud`, mirroring the real batch's sustained load) showed
+6 workers completing 30/30 calls cleanly, while 8 workers rejected
+roughly two-thirds of calls outright with HTTP 429 — and the rejections
+returned in ~0.3-0.4s, far faster than any real inference, confirming the
+endpoint was bouncing the request before even attempting it, not timing
+out under load.
+
+**Fix:** lowered `LLM_MAX_WORKERS`'s default from 8 to 5 (a margin below
+the empirically-confirmed 6-workers-safe/8-workers-fails boundary, leaving
+room for other concurrent Ollama traffic such as the Q&A agent). Separately
+hardened `llm_matcher.get_llm_verdict()` to detect a 429 specifically (via
+`ollama.ResponseError.status_code`, a structured field, not string
+matching) and give it a longer, wider retry budget
+(`MAX_ATTEMPTS_RATE_LIMITED=6`, 1.0s backoff base) than a generic failure,
+since a rate-limit rejection is a near-guaranteed success on retry once
+other in-flight calls clear — unlike a genuine error, it shouldn't "give
+up" on the same short budget. Re-verified with the same concurrency probe
+methodology (6 and 30-call sustained-load probes both clean) before
+re-running the real batch.
+
+---
+
 ## Template for new entries
 
 ```
