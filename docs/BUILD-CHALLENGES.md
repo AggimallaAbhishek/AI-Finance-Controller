@@ -694,6 +694,58 @@ essentially every one of these settlements again.
 
 ---
 
+### Two failed attempts to speed up Tier 3.5 verification, and why the third was declined
+
+**Context:** with every Tier 3.5 candidate now requiring an LLM
+confirmation (previous entry), a 1000-settlement batch with ~100
+candidates took ~7 minutes — ~100 sequential round trips at ~4s/call,
+since `LLM_MAX_WORKERS` stays at 1 for the documented rate-limit reasons
+above. Two optimizations were tried and measured against the real cloud
+endpoint before either was kept or discarded.
+
+**Attempt 1 — batch verification calls across settlements, the same lever
+that worked for Tier 4:** grouping several different settlements' single-
+candidate confirmations into one prompt (reusing `get_llm_verdicts_batch`)
+measured **slower**, not faster: 125.9s vs. a 79.7s baseline for the same
+20 real items. Tracing why: batching made the model measurably more
+conservative — more rejections, and each rejection falls through to a
+full Tier 4 call (more expensive than the verification call it replaced),
+so fewer round trips didn't translate to less wall-clock time. Reverted;
+Tier 3.5 verification stays one call per candidate.
+
+**Attempt 2 — reduce reasoning effort via Ollama's `think` parameter:** an
+isolated benchmark (same fixed prompt, 8 interleaved trials) showed
+`think="low"` averaging 2.65s vs. 3.53s unset (~25% faster) with no
+apparent quality drop. Applied as the default and re-tested on the real
+20-item batch, back-to-back against `think` unset to control for cloud
+time-of-day drift: `think="low"` took 125.5s, `think` unset took 70.0s —
+worse, not better, reversing the isolated benchmark's own signal.
+Conclusion: a single fixed easy prompt is not a reliable proxy for a
+varied real workload when the underlying effect size is this sensitive to
+prompt difficulty and cloud queue conditions; the isolated benchmark
+should have been validated against the real batch before being applied,
+not after. Fully reverted (no `think` parameter is set).
+
+**Investigated but declined — raise `LLM_MAX_WORKERS` for verification
+specifically:** since verification prompts are much lighter than the
+original multi-candidate reasoning prompt that produced the documented
+429s, concurrency was re-probed rather than assumed still-unsafe: 30/30
+calls succeeded cleanly at 4 concurrent workers (~1.5x faster than
+sequential). Not shipped — the earlier concurrency section of this same
+document already recorded that 5-6 workers looked clean in a similarly-
+sized probe, then intermittently hit 429s under sustained real load
+competing with the Q&A agent, and a single 30-call test can't rule that
+out. Presented to the user as an option alongside a lower-risk
+alternative (skip verification only for candidates whose reference_id
+already matches exactly case-insensitively — the same evidence rule_tier
+already auto-accepts unverified, just with a wider date window; only
+genuinely-reconstructed references would still need confirmation). Both
+declined: verification stays mandatory for every Tier 3.5 candidate,
+`LLM_MAX_WORKERS` stays at 1, and the ~4s/call sequential cost is accepted
+as the price of confirming every heuristic match.
+
+---
+
 ## Template for new entries
 
 ```
