@@ -3,7 +3,10 @@ from datetime import date
 from decimal import Decimal
 
 import reconcile
-from reconcile import Settlement, BankEntry, rule_tier, run_reconciliation, run_and_persist
+from reconcile import (
+    Settlement, BankEntry, rule_tier, algo_tier, _restricted_edit_distance,
+    run_reconciliation, run_and_persist,
+)
 
 
 def settlement(id="STL1", ref="RZP1", amount="1000.00", d=date(2026, 7, 10), status="settled"):
@@ -95,6 +98,68 @@ def test_bank_only_entry_becomes_exception():
     assert len(exceptions) == 2  # settlement has no counterpart, and the orphan bank entry
     bank_exception = next(e for e in exceptions if e["bank_ref"] == "BTXN_ORPHAN")
     assert bank_exception["settlement_ref"] is None
+
+
+def test_restricted_edit_distance_counts_adjacent_transposition_as_one():
+    assert _restricted_edit_distance("RZP1234567890", "RZP1234567890") == 0
+    assert _restricted_edit_distance("RZP1234567890", "RZP2134567890") == 1  # swapped first two digits
+    assert _restricted_edit_distance("RZP1234567890", "RZP1234567") == 3     # truncated 3 chars
+    assert _restricted_edit_distance("abc", "xyz") == 3
+
+
+def test_algo_tier_reconstructs_truncated_reference_beyond_date_tolerance():
+    s = settlement(ref="RZP1234567890", amount="1000.00", d=date(2026, 7, 1))
+    b = bank(ref="RZP1234567", amount="1000.00", d=date(2026, 7, 5),  # 4 days off
+             narration="UPI-RAZORPAY SETTLEMENT ORDER 567890")  # contains ref[-6:]
+
+    verdict = algo_tier(s, b)
+    assert verdict is not None
+    confidence, reason = verdict
+    assert confidence == "algo-reconstructed"
+    assert "567890" in reason
+
+
+def test_algo_tier_rejects_without_narration_corroboration():
+    # Same truncated reference and exact amount, but narration says nothing
+    # about the original reference — too weak to trust without that signal.
+    s = settlement(ref="RZP1234567890", amount="1000.00", d=date(2026, 7, 1))
+    b = bank(ref="RZP1234567", amount="1000.00", d=date(2026, 7, 5), narration="ATM WDL")
+    assert algo_tier(s, b) is None
+
+
+def test_algo_tier_rejects_fuzzy_amount():
+    # Amount must match exactly — a corrupted reference plus a fuzzy amount
+    # would stack two uncertain signals instead of one.
+    s = settlement(ref="RZP1234567890", amount="1000.00", d=date(2026, 7, 1))
+    b = bank(ref="RZP1234567", amount="995.00", d=date(2026, 7, 5),
+             narration="UPI-RAZORPAY SETTLEMENT ORDER 567890")
+    assert algo_tier(s, b) is None
+
+
+def test_algo_tier_rejects_beyond_date_window():
+    s = settlement(ref="RZP1234567890", amount="1000.00", d=date(2026, 7, 1))
+    b = bank(ref="RZP1234567", amount="1000.00", d=date(2026, 7, 20),  # 19 days off
+             narration="UPI-RAZORPAY SETTLEMENT ORDER 567890")
+    assert algo_tier(s, b) is None
+
+
+def test_run_reconciliation_resolves_corrupted_reference_without_llm_call():
+    s = settlement(ref="RZP1234567890", amount="1000.00", d=date(2026, 7, 1))
+    b = bank(ref="RZP1234567", amount="1000.00", d=date(2026, 7, 5),
+             narration="UPI-RAZORPAY SETTLEMENT ORDER 567890")
+
+    def should_not_be_called(*args, **kwargs):
+        raise AssertionError("Tier 3.5 should resolve this without an LLM call")
+
+    matches, exceptions, _, stats = run_reconciliation(
+        [s], [b], use_llm=True, llm_fn=should_not_be_called, batch_size=1,
+    )
+
+    assert len(matches) == 1
+    assert matches[0]["confidence"] == "algo-reconstructed"
+    assert exceptions == []
+    assert stats["algo_matched"] == 1
+    assert stats["llm_matched"] == 0
 
 
 def test_rule_tier_tolerance_is_overridable_per_call():

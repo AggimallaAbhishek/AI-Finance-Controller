@@ -58,7 +58,7 @@ TOOLS_SCHEMA = [
                     "confidence": {
                         "type": "string",
                         "description": "Filter to one confidence tier",
-                        "enum": ["exact", "fuzzy-date", "fuzzy-amount", "fuzzy-date-amount", "llm-reasoned", "human-resolved"],
+                        "enum": ["exact", "fuzzy-date", "fuzzy-amount", "fuzzy-date-amount", "algo-reconstructed", "llm-reasoned", "human-resolved"],
                     }
                 },
                 "required": [],
@@ -120,6 +120,7 @@ def _build_tool_dispatch(conn, run_id):
             "total_bank_entries": stored.get("total_bank_entries", 0),
             "matched": matched,
             "rule_matched": sum(1 for m in matches if m["tier"] == "rule"),
+            "algo_matched": sum(1 for m in matches if m["tier"] == "algo"),
             "llm_matched": sum(1 for m in matches if m["tier"] == "llm"),
             "human_resolved": sum(1 for m in matches if m["tier"] == "human"),
             "settlement_exceptions": sum(1 for e in exceptions if e["settlement_ref"]),

@@ -605,6 +605,52 @@ the single-item code path regardless of this default.
 
 ---
 
+### Tier 3.5 — resolving the LLM tier's cases with an edit-distance algorithm instead
+
+**Context:** inspecting the synthetic generator (`data/generate_synthetic_data.py`)
+showed the `llm_reasoned` category isn't arbitrary — it's always: amount
+identical, reference_id corrupted one of three specific ways (lowercased,
+truncated by 3 chars, or one adjacent-pair transposition), date drifted
+3-5 days, and the narration always contains the original reference's last
+6 characters. That's a deterministic pattern, not a case that needs
+reasoning — `rule_tier()` only fails on it because it requires reference
+equality up front and never gets to compare date/amount at all.
+
+**Fix:** added `algo_tier()` (Tier 3.5, `reconcile.py`): a restricted
+edit-distance check (Levenshtein + adjacent transposition,
+`_restricted_edit_distance()`) between settlement and candidate
+reference_ids, gated behind three independent signals so no single one
+carries the decision alone — amount must match exactly
+(no tolerance stacking), the narration must contain the settlement
+reference's last 6 characters, and the date must fall within
+`RECONCILE_ALGO_DATE_TOLERANCE_DAYS` (default 7 — wider than the rule
+tier's 2, since the other signals already establish identity). Runs
+against the same shortlisted candidates already computed for the LLM
+tier, so settlements it resolves never generate an LLM call at all.
+
+**Validation:** ran `eval_reconcile.py --mock-llm` (llm_fn never actually
+invoked, since nothing reached the LLM tier) across `batch_500`,
+`batch_1000`, and `batch_10000`: 100% of what was previously
+`llm_matched` became `algo_matched`, `llm_matched` dropped to 0, and
+accuracy/precision/recall held at 1.0000 with zero false positives —
+confirmed with `--no-llm` too, showing the tier works independent of
+Ollama being reachable at all. At `batch_50000`, the harness reported 2
+false positives; tracing them (row-level, not the harness's
+settlement_id-keyed dict) showed both were `exact`/`fuzzy-*` (pure Tier
+1-3) matches on one of 14 settlement_ids that collide at that scale — the
+generator's 8-digit ID space (9x10^7 combinations) hits the birthday
+bound around 50k rows, and both the eval harness's scoring and the
+engine's own match list are keyed by settlement_id, so a genuine ID
+collision misattributes one of the two colliding settlements' matches.
+Confirmed pre-existing and unrelated to Tier 3.5 directly: a row-level
+check of the exact (settlement_id, bank_txn_id) pairs found all 5,000
+`algo_matched` records at that scale exactly correct, with zero missed
+`llm_reasoned` pairs. Not fixed here (out of scope — it's a synthetic-data
+ID-density issue, not a reconciliation bug) but worth knowing before
+trusting `batch_50000`'s eval-harness accuracy number at face value.
+
+---
+
 ## Template for new entries
 
 ```
