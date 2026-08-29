@@ -12,6 +12,9 @@ frontend/dist/
 # Regenerated pipeline output (run reconcile.py to recreate)
 data/output/
 
+# eval_reconcile.py's --cache LLM verdict cache (regenerate by rerunning)
+data/**/.llm_cache.json
+
 # Env
 .env
 *.env.local

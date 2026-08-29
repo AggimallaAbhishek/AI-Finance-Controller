@@ -23,7 +23,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import audit
-from llm_matcher import get_llm_verdict, DEFAULT_MODEL
+from llm_matcher import get_llm_verdict, get_llm_verdicts_batch, DEFAULT_MODEL
 
 # Configurable without a code change — see docs/glossary.md for what these
 # tolerances mean. Defaults match the ones the batch was designed against.
@@ -44,6 +44,13 @@ MAX_CANDIDATES = 3
 # RECONCILE_LLM_MAX_WORKERS if your Ollama account/model is confirmed (via
 # the same realistic-prompt probe methodology) to tolerate more.
 LLM_MAX_WORKERS = int(os.environ.get("RECONCILE_LLM_MAX_WORKERS", "1"))
+# With concurrency off the table, the remaining lever for real wall-clock
+# time is fewer round trips: batch this many settlements into one LLM call
+# (get_llm_verdicts_batch) instead of one call per settlement. 1 preserves
+# the original one-call-per-settlement behavior exactly (default — used by
+# every existing test's llm_fn mock). Only raise it after confirming via
+# the eval harness that batched accuracy holds — see docs/BUILD-CHALLENGES.md.
+LLM_BATCH_SIZE = int(os.environ.get("RECONCILE_LLM_BATCH_SIZE", "1"))
 
 
 @dataclass
@@ -174,13 +181,22 @@ def shortlist_candidates(settlement, unclaimed_bank):
 
 
 def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_verdict, model=None,
-                        progress_cb=None):
+                        progress_cb=None, batch_size=None, llm_batch_fn=get_llm_verdicts_batch):
     """Returns (matches, exceptions, audit_entries, stats).
 
     progress_cb(stage, done, total), if given, is called with real counts as
     each tier processes — stages "rules", "llm" (only if any settlement
     falls to it), "persisting" — so a caller (the async /reconcile job) can
-    show real progress instead of a spinner that looks stuck."""
+    show real progress instead of a spinner that looks stuck.
+
+    batch_size (default: LLM_BATCH_SIZE, itself defaulting to 1) controls
+    how many settlements go into one LLM call. 1 preserves the original
+    one-settlement-per-call behavior via llm_fn exactly. >1 groups
+    settlements needing the LLM tier into chunks and calls llm_batch_fn
+    once per chunk instead — see docs/BUILD-CHALLENGES.md for why batching,
+    not concurrency, is the real lever for wall-clock time on this
+    account's Ollama endpoint."""
+    batch_size = LLM_BATCH_SIZE if batch_size is None else batch_size
     def report(stage, done, total):
         if progress_cb:
             progress_cb(stage, done, total)
@@ -299,7 +315,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
             llm_jobs[s.settlement_id] = s
 
     verdicts = {}
-    if llm_jobs:
+    if llm_jobs and batch_size <= 1:
         with ThreadPoolExecutor(max_workers=min(LLM_MAX_WORKERS, len(llm_jobs))) as pool:
             future_to_sid = {}
             for sid, s in llm_jobs.items():
@@ -308,6 +324,22 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
                 future_to_sid[future] = sid
             for future in as_completed(future_to_sid):
                 verdicts[future_to_sid[future]] = future.result()
+    elif llm_jobs:
+        # Batched path: group settlements needing the LLM tier into chunks
+        # of batch_size and issue one llm_batch_fn call per chunk (each
+        # chunk-call still goes through the same worker pool, so it's
+        # still safely bounded by LLM_MAX_WORKERS if that's ever raised
+        # above 1). Cuts round trips, not concurrency.
+        job_sids = list(llm_jobs.keys())
+        chunks = [job_sids[i:i + batch_size] for i in range(0, len(job_sids), batch_size)]
+        with ThreadPoolExecutor(max_workers=min(LLM_MAX_WORKERS, len(chunks))) as pool:
+            future_to_chunk = {}
+            for chunk in chunks:
+                items = [(settlement_dicts[sid], frozen[sid][1]) for sid in chunk]
+                future = pool.submit(llm_batch_fn, items, model=model)
+                future_to_chunk[future] = chunk
+            for future in as_completed(future_to_chunk):
+                verdicts.update(future.result())
 
     exceptions = []
     for i, s in enumerate(unresolved):

@@ -19,10 +19,80 @@ Usage:
 """
 
 import argparse
+import hashlib
+import json
 import time
 from pathlib import Path
 
 import reconcile
+from llm_matcher import get_llm_verdict, get_llm_verdicts_batch
+
+
+def adapt_single_to_batch(llm_fn):
+    """Wrap a single-item llm_fn (real, mock, or cached) into the
+    llm_batch_fn shape by calling it once per item — lets --mock-llm and
+    --cache validate the new batching/grouping code path in reconcile.py
+    without needing a batch-shaped mock, though it doesn't exercise a real
+    multi-settlement prompt (only --batch-size with neither flag does)."""
+    def batch_fn(items, model=None):
+        return {
+            settlement_dict["settlement_id"]: llm_fn(settlement_dict, candidate_dicts, model=model)
+            for settlement_dict, candidate_dicts in items
+        }
+    return batch_fn
+
+
+def make_cached_llm(llm_fn, cache_path):
+    """Wrap an llm_fn so identical (settlement, candidates, model) calls are
+    answered from a local JSON cache instead of hitting Ollama again. Only
+    used by this eval harness — reconcile.py's real code path never
+    caches, since a live run should always reflect the current model.
+    Speeds up repeated test iterations on the same batch after a code
+    change: the first real run pays full LLM latency once; every rerun
+    against the same data after that is near-instant."""
+    cache_path = Path(cache_path)
+    cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+    hits = [0]
+
+    def cached(settlement_dict, candidate_dicts, model=None):
+        key = json.dumps(
+            {"s": settlement_dict, "c": candidate_dicts, "m": model or reconcile.DEFAULT_MODEL},
+            sort_keys=True,
+        )
+        digest = hashlib.sha256(key.encode()).hexdigest()
+        if digest in cache:
+            hits[0] += 1
+            return cache[digest]
+        verdict = llm_fn(settlement_dict, candidate_dicts, model=model)
+        cache[digest] = verdict
+        cache_path.write_text(json.dumps(cache))
+        return verdict
+
+    cached.hits = hits
+    return cached
+
+
+def make_mock_llm(ground_truth_path):
+    """Answer from ground_truth.csv instead of calling any model — for
+    testing the engine's matching LOGIC (candidate shortlisting, tie-break,
+    concurrency-safety, exception bookkeeping) at full speed, not real
+    model reasoning quality. Never used by reconcile.py itself."""
+    import csv
+    expected = {}
+    with open(ground_truth_path, newline="") as f:
+        for row in csv.DictReader(f):
+            if row["settlement_id"] and row["expected_match"] == "true":
+                expected[row["settlement_id"]] = row["bank_txn_id"]
+
+    def mock(settlement_dict, candidate_dicts, model=None):
+        sid = settlement_dict["settlement_id"]
+        expected_bid = expected.get(sid)
+        candidate_ids = {c["txn_id"] for c in candidate_dicts}
+        if expected_bid in candidate_ids:
+            return {"match_found": True, "matched_bank_txn_id": expected_bid, "reasoning": "mock-oracle"}
+        return {"match_found": False, "matched_bank_txn_id": None, "reasoning": "mock-oracle: no correct candidate present"}
+
+    return mock
 
 
 def load_ground_truth(path):
@@ -92,11 +162,34 @@ def main():
                          help="directory containing settlement.csv, bank_statement.csv, ground_truth.csv")
     parser.add_argument("--no-llm", action="store_true")
     parser.add_argument("--model", default=None)
+    parser.add_argument("--mock-llm", action="store_true",
+                         help="answer from ground_truth.csv instead of calling Ollama — tests engine "
+                              "logic (shortlisting, concurrency-safety, bookkeeping) at full speed, "
+                              "not real model quality")
+    parser.add_argument("--cache", action="store_true",
+                         help="cache real LLM verdicts to <dir>/.llm_cache.json; reruns on the same "
+                              "batch reuse cached answers instead of re-calling Ollama")
+    parser.add_argument("--batch-size", type=int, default=1,
+                         help="settlements per LLM call (default 1 = one call per settlement). "
+                              ">1 uses the real batched-prompt path unless --mock-llm/--cache is "
+                              "also given, in which case that mock/cache is adapted per-item instead "
+                              "of exercising a real multi-settlement prompt.")
     args = parser.parse_args()
 
     settlements = reconcile.load_settlements(args.dir / "settlement.csv")
     bank_entries = reconcile.load_bank_entries(args.dir / "bank_statement.csv")
     expected_for_settlement, expected_for_bank = load_ground_truth(args.dir / "ground_truth.csv")
+
+    llm_fn = get_llm_verdict
+    if args.mock_llm:
+        llm_fn = make_mock_llm(args.dir / "ground_truth.csv")
+    elif args.cache:
+        llm_fn = make_cached_llm(get_llm_verdict, args.dir / ".llm_cache.json")
+
+    if args.batch_size > 1:
+        llm_batch_fn = get_llm_verdicts_batch if not (args.mock_llm or args.cache) else adapt_single_to_batch(llm_fn)
+    else:
+        llm_batch_fn = get_llm_verdicts_batch
 
     stage_times = {}
     t_stage_start = {"t": time.monotonic()}
@@ -108,7 +201,9 @@ def main():
 
     t0 = time.monotonic()
     matches, exceptions, audit_entries, stats = reconcile.run_reconciliation(
-        settlements, bank_entries, use_llm=not args.no_llm, model=args.model, progress_cb=on_progress,
+        settlements, bank_entries, use_llm=not args.no_llm, llm_fn=llm_fn,
+        model=args.model, progress_cb=on_progress,
+        batch_size=args.batch_size, llm_batch_fn=llm_batch_fn,
     )
     elapsed = time.monotonic() - t0
 
@@ -118,6 +213,8 @@ def main():
     print(f"settlements={len(settlements)} bank_entries={len(bank_entries)} "
           f"use_llm={not args.no_llm} model={args.model or reconcile.DEFAULT_MODEL if not args.no_llm else '-'}")
     print(f"wall_clock_seconds={elapsed:.2f}  stage_times={ {k: round(v, 2) for k, v in stage_times.items()} }")
+    if args.cache and hasattr(llm_fn, "hits"):
+        print(f"llm cache hits: {llm_fn.hits[0]}")
     print(f"engine stats: {stats}")
     print()
     print(f"{'category':<28}{'tp':>6}{'fp':>6}{'fn':>6}{'tn':>6}")
