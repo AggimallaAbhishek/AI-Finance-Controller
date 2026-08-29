@@ -399,8 +399,16 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
 
     claimed_after_rules = set(claimed)
     frozen = {}       # settlement_id -> (candidates, candidate_dicts) at freeze time
-    llm_jobs = {}      # settlement_id -> Settlement, for those that actually need a call
+    llm_jobs = {}      # settlement_id -> Settlement, for those that actually need a Tier 4 call
     algo_resolved_ids = set()  # settlement_ids Tier 3.5 resolved (LLM-verified)
+
+    # Tier 3.5, pass 1 (sequential, no LLM): identify a corrupted-reference
+    # candidate per settlement against the post-rule-tier shortlist (already
+    # ranked by candidate_score, which rewards reference similarity/amount/
+    # date/narration). Split from verification (pass 2 below) so all
+    # candidates are known before any LLM call fires — a settlement with a
+    # rejected/absent candidate falls through to llm_jobs immediately.
+    algo_candidates = {}  # settlement_id -> (Settlement, BankEntry, candidate_dict, confidence, reason)
     for s in unresolved:
         # A non-"settled" settlement (reversed/pending) has no live bank-side
         # money movement to find a counterpart for, so it can never have a
@@ -414,65 +422,94 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
             frozen[s.settlement_id] = ([], [])
             continue
         candidates, candidate_dicts = build_candidates(s, claimed_after_rules)
+        frozen[s.settlement_id] = (candidates, candidate_dicts)
 
-        # Tier 3.5: identify a candidate deterministically against this same
-        # shortlist (already ranked by candidate_score, which rewards
-        # reference similarity/amount/date/narration), then require an LLM
-        # call to confirm it before accepting — edit-distance + narration is
-        # strong evidence but still a heuristic, not an identity check, so
-        # every algo-identified candidate gets a second opinion rather than
-        # being auto-accepted. Only runs when an LLM is actually available
-        # (use_llm) — without one, a Tier 3.5 candidate falls through to the
-        # normal Tier 4 path below like any other ambiguous-middle
-        # settlement, never auto-accepted unverified. Sequential like the
-        # rule tier above — not concurrent like Tier 4 — so claiming a
-        # candidate here is immediately visible to every later settlement's
-        # shortlist in this same loop.
-        algo_verified = None
+        algo_hit = None
         if use_llm:
             for i, b in enumerate(candidates):
                 verdict = algo_tier(s, b)
-                if not verdict:
-                    continue
-                confidence, reason = verdict
-                check = llm_fn(settlement_dicts[s.settlement_id], [candidate_dicts[i]], model=model)
-                if check["match_found"] and check["matched_bank_txn_id"] == b.txn_id:
-                    algo_verified = (b, confidence, f"{reason}; LLM-confirmed: {check['reasoning']}")
-                else:
-                    logger.info(
-                        "Tier 3.5 candidate for %s (%s) rejected by LLM verification (%s) — "
-                        "falling through to Tier 4 with the full candidate set",
-                        s.settlement_id, b.txn_id, check["reasoning"],
-                    )
-                break  # only the top algo candidate is tried; a rejection falls through, not to candidate #2
-        if algo_verified:
-            b, confidence, reason = algo_verified
+                if verdict:
+                    confidence, reason = verdict
+                    algo_hit = (b, candidate_dicts[i], confidence, reason)
+                    break
+        if algo_hit:
+            b, candidate_dict, confidence, reason = algo_hit
+            algo_candidates[s.settlement_id] = (s, b, candidate_dict, confidence, reason)
+        elif use_llm and candidates:
+            llm_jobs[s.settlement_id] = s
+
+    # Two different settlements independently proposing the same
+    # still-unclaimed bank row (possible since claimed_after_rules isn't
+    # updated until a candidate is actually verified below) would need to
+    # coincidentally share an exact amount *and* both have reference/
+    # narration evidence pointing at that one row — vanishingly unlikely,
+    # but resolved deterministically here (first by settlement_id) rather
+    # than left as a race at apply time; the loser just falls through to
+    # Tier 4 with its own full candidate set, never a wrong match.
+    seen_bank_ids = set()
+    for sid in sorted(algo_candidates):
+        s, b, _, _, _ = algo_candidates[sid]
+        if b.txn_id in seen_bank_ids:
+            del algo_candidates[sid]
+            if frozen[sid][0]:
+                llm_jobs[sid] = s
+        else:
+            seen_bank_ids.add(b.txn_id)
+
+    # Tier 3.5, pass 2: confirm every identified candidate with the LLM
+    # before accepting it — edit-distance + narration is strong evidence
+    # but still a heuristic, not an identity check. Deliberately NOT
+    # batched across settlements the way Tier 4 batches its own calls: a
+    # real-data trial (see docs/BUILD-CHALLENGES.md) found that grouping
+    # several different settlements' single-candidate verifications into
+    # one prompt made the model measurably more conservative — more
+    # rejections, each of which falls through to a full Tier 4 call, made
+    # the batched version slower overall despite fewer round trips. One
+    # call per candidate, same as before; get_llm_verdict's reduced
+    # reasoning effort (RECONCILE_LLM_THINK) is what actually cuts
+    # wall-clock time here.
+    verify_verdicts = {}
+    if algo_candidates:
+        with ThreadPoolExecutor(max_workers=min(LLM_MAX_WORKERS, len(algo_candidates))) as pool:
+            future_to_sid = {}
+            for sid, (_, _, candidate_dict, _, _) in algo_candidates.items():
+                future = pool.submit(llm_fn, settlement_dicts[sid], [candidate_dict], model=model)
+                future_to_sid[future] = sid
+            for future in as_completed(future_to_sid):
+                verify_verdicts[future_to_sid[future]] = future.result()
+
+    for sid, (s, b, candidate_dict, confidence, reason) in algo_candidates.items():
+        check = verify_verdicts[sid]
+        if check["match_found"] and check["matched_bank_txn_id"] == b.txn_id:
             claimed_after_rules.add(b.txn_id)
             claimed.add(b.txn_id)
-            algo_resolved_ids.add(s.settlement_id)
+            algo_resolved_ids.add(sid)
             matches.append({
                 "match_status": "matched",
-                "settlement_ref": s.settlement_id,
+                "settlement_ref": sid,
                 "bank_ref": b.txn_id,
                 "confidence": confidence,
-                "reason": reason,
+                "reason": f"{reason}; LLM-confirmed: {check['reasoning']}",
             })
             audit_entries.append({
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "settlement_ref": s.settlement_id,
+                "settlement_ref": sid,
                 "bank_ref": b.txn_id,
                 "match_status": "matched",
                 "confidence": confidence,
-                "reason": reason,
+                "reason": f"{reason}; LLM-confirmed: {check['reasoning']}",
                 "tier": "algo",
                 "model": model or DEFAULT_MODEL,
                 "candidates_considered": [b.txn_id],
             })
-            continue
-
-        frozen[s.settlement_id] = (candidates, candidate_dicts)
-        if use_llm and candidates:
-            llm_jobs[s.settlement_id] = s
+        else:
+            logger.info(
+                "Tier 3.5 candidate for %s (%s) rejected by LLM verification (%s) — "
+                "falling through to Tier 4 with the full candidate set",
+                sid, b.txn_id, check["reasoning"],
+            )
+            if frozen[sid][0]:
+                llm_jobs[sid] = s
 
     llm_remaining = [s for s in unresolved if s.settlement_id not in algo_resolved_ids]
 
