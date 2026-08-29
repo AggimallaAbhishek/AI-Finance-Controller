@@ -753,7 +753,6 @@ button {
 
 .evidence-card--reasoning {
   background: var(--surface);
-  border-left: 3px solid var(--border);
 }
 
 .evidence-card--reasoning p {
@@ -764,15 +763,18 @@ button {
 }
 
 .evidence-card--rule.evidence-card--reasoning {
-  border-left-color: var(--tier-rule);
+  background: var(--tier-rule-bg);
+  border-color: var(--tier-rule);
 }
 
 .evidence-card--llm.evidence-card--reasoning {
-  border-left-color: var(--tier-llm);
+  background: var(--tier-llm-bg);
+  border-color: var(--tier-llm);
 }
 
 .evidence-card--human.evidence-card--reasoning {
-  border-left-color: var(--success);
+  background: var(--success-bg);
+  border-color: var(--success);
 }
 
 .evidence-connector {
