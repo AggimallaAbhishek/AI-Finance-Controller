@@ -78,35 +78,55 @@ def load_bank_entries(path):
         ]
 
 
+def _ref_key(reference_id):
+    """Case-normalized reference_id, used both to index bank entries for
+    O(1) lookup and to decide whether a rule-tier match required case
+    normalization. A bank export re-casing a reference_id (e.g. lowercasing
+    it) doesn't change which transaction it identifies, so comparing on
+    this key is exact-identity matching, not fuzzy matching — the
+    reference_id namespace (RZP + 10 digits) is wide enough that a
+    same-key-different-case collision between two unrelated transactions is
+    not a realistic risk."""
+    return reference_id.lower()
+
+
 def rule_tier(settlement, bank, date_tolerance_days=None, amount_tolerance_rs=None):
     """Return (confidence, reason) if settlement/bank match within rule
-    tolerance, else None. Requires an exact reference_id match — that's what
-    makes a rule verdict trustworthy without reasoning over free text.
+    tolerance, else None. Requires the reference_id to match exactly once
+    case-normalized — that's what makes a rule verdict trustworthy without
+    reasoning over free text; a same-case exact match still gets its own
+    "exact"/"fuzzy-*" confidence, while a match that needed case
+    normalization is labeled "*-ci" so the audit trail stays honest about
+    what evidence the match actually rested on.
     Tolerances default to the module-level (environment-configurable)
     constants; pass explicit values to override per call."""
     date_tolerance_days = DATE_TOLERANCE_DAYS if date_tolerance_days is None else date_tolerance_days
     amount_tolerance_rs = AMOUNT_TOLERANCE_RS if amount_tolerance_rs is None else amount_tolerance_rs
 
-    if settlement.reference_id != bank.reference_id:
+    if _ref_key(settlement.reference_id) != _ref_key(bank.reference_id):
         return None
+    case_matched = settlement.reference_id == bank.reference_id
+    suffix = "" if case_matched else "-ci"
+    ref_note = "reference_id" if case_matched else "reference_id (case-insensitive)"
+
     date_diff = abs((settlement.date - bank.date).days)
     amount_diff = abs(settlement.amount - bank.amount)
 
     if date_diff == 0 and amount_diff == 0:
-        return "exact", "reference_id, amount, and date all matched exactly"
+        return f"exact{suffix}", f"{ref_note}, amount, and date all matched exactly"
     if amount_diff == 0 and date_diff <= date_tolerance_days:
-        return "fuzzy-date", (
-            f"reference_id and amount matched exactly; date differs by "
+        return f"fuzzy-date{suffix}", (
+            f"{ref_note} and amount matched exactly; date differs by "
             f"{date_diff} day(s), within {date_tolerance_days}-day tolerance"
         )
     if date_diff == 0 and amount_diff <= amount_tolerance_rs:
-        return "fuzzy-amount", (
-            f"reference_id and date matched exactly; amount differs by "
+        return f"fuzzy-amount{suffix}", (
+            f"{ref_note} and date matched exactly; amount differs by "
             f"Rs {amount_diff}, within Rs {amount_tolerance_rs} tolerance"
         )
     if date_diff <= date_tolerance_days and amount_diff <= amount_tolerance_rs:
-        return "fuzzy-date-amount", (
-            f"reference_id matched exactly; date differs by {date_diff} day(s) "
+        return f"fuzzy-date-amount{suffix}", (
+            f"{ref_note} matched; date differs by {date_diff} day(s) "
             f"and amount by Rs {amount_diff}, both within tolerance"
         )
     return None
@@ -152,6 +172,9 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
             progress_cb(stage, done, total)
 
     bank_by_id = {b.txn_id: b for b in bank_entries}
+    bank_by_ref = {}
+    for b in bank_entries:
+        bank_by_ref.setdefault(_ref_key(b.reference_id), []).append(b)
     claimed = set()
     matches = []
     audit_entries = []
@@ -159,10 +182,14 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
 
     settlements_sorted = sorted(settlements, key=lambda s: s.settlement_id)
 
-    # Tier 1-3: rules
+    # Tier 1-3: rules. rule_tier() requires (case-normalized) reference_id
+    # equality, so only bank entries sharing that key can ever match a given
+    # settlement — looking them up via bank_by_ref instead of scanning every
+    # bank entry turns this from O(settlements x bank_entries) into
+    # effectively O(settlements), the dominant cost at large batch sizes.
     for i, s in enumerate(settlements_sorted):
         best = None  # (b, confidence, reason, amount_diff, date_diff)
-        for b in bank_entries:
+        for b in bank_by_ref.get(_ref_key(s.reference_id), []):
             if b.txn_id in claimed:
                 continue
             verdict = rule_tier(s, b)
