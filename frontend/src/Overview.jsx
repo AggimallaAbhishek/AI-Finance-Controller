@@ -31,12 +31,15 @@ export default function Overview({
   const matchPct = Math.round(stats.match_rate * 100)
   const total = stats.total_settlements || 1
   const totalExceptions = stats.settlement_exceptions + stats.bank_exceptions
-  // algo-reconstructed matches share the rule segment/color: both are "the
-  // deterministic engine decided this, no LLM call," differentiated by
-  // label (see tiers.js), not by a dedicated hue in the provenance palette.
-  const ruleMatched = stats.rule_matched + (stats.algo_matched || 0)
+  // algo-reconstructed matches share the LLM segment/color, not rule's:
+  // the candidate is found deterministically, but it's never accepted
+  // without an LLM confirming it first (see tiers.js), so "by LLM" here
+  // means "an LLM call was part of this decision," matching the badge
+  // grouping used everywhere else a match's tier is shown.
+  const ruleMatched = stats.rule_matched
+  const llmMatched = stats.llm_matched + (stats.algo_matched || 0)
   const rulePct = (ruleMatched / total) * 100
-  const llmPct = (stats.llm_matched / total) * 100
+  const llmPct = (llmMatched / total) * 100
   const humanPct = (stats.human_resolved / total) * 100
   const openPct = (totalExceptions / total) * 100
   const hasNonSettled = stats.settled_settlements != null && stats.settled_settlements < stats.total_settlements
@@ -75,7 +78,7 @@ export default function Overview({
               the remaining {nonSettledCount} are reversed or pending, with no bank-side counterpart to match
             </p>
           )}
-          <div className="overview-bar" role="img" aria-label={`${ruleMatched} matched by rule, ${stats.llm_matched} by LLM, ${stats.human_resolved} by you, ${totalExceptions} open exceptions`}>
+          <div className="overview-bar" role="img" aria-label={`${ruleMatched} matched by rule, ${llmMatched} by LLM, ${stats.human_resolved} by you, ${totalExceptions} open exceptions`}>
             <div className="overview-bar__seg overview-bar__seg--rule" style={{ width: `${rulePct}%` }} />
             <div className="overview-bar__seg overview-bar__seg--llm" style={{ width: `${llmPct}%` }} />
             <div className="overview-bar__seg overview-bar__seg--human" style={{ width: `${humanPct}%` }} />
@@ -88,7 +91,7 @@ export default function Overview({
             </span>
             <span className="overview-legend__item">
               <span className="overview-legend__dot overview-legend__dot--llm" />
-              <strong>{stats.llm_matched}</strong>&nbsp;by LLM
+              <strong>{llmMatched}</strong>&nbsp;by LLM
             </span>
             <span className="overview-legend__item">
               <span className="overview-legend__dot overview-legend__dot--human" />

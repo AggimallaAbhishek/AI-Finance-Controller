@@ -6,8 +6,12 @@
 // `group` drives the provenance color palette (see index.css's
 // --tier-rule/--tier-llm/--success roles): every rule-tier confidence
 // (exact/fuzzy-*) shares one "rule" color — they're all "the deterministic
-// engine decided this," differentiated by label, not hue — while
-// llm-reasoned and human-resolved each get their own.
+// engine decided this without any LLM involvement," differentiated by
+// label, not hue. algo-reconstructed shares the "llm" color instead of
+// "rule": the candidate is identified deterministically, but it's never
+// accepted without an LLM confirming it first, so it's honest to group it
+// with "an LLM call was part of this decision," not the LLM-free bucket.
+// human-resolved gets its own.
 export const TIERS = [
   { value: 'exact', label: 'Exact', group: 'rule', hint: 'reference_id, amount, and date all matched exactly — a rule, not a guess' },
   { value: 'fuzzy-date', label: 'Fuzzy date', group: 'rule', hint: 'reference_id and amount matched exactly; date drifted within tolerance' },
