@@ -16,7 +16,7 @@ import ollama
 
 logger = logging.getLogger("llm_matcher")
 
-DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "gpt-oss:20b-cloud")
+DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "gpt-oss:120b-cloud")
 MAX_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 0.5
 # A 429 means the endpoint is rejecting the call outright because too many

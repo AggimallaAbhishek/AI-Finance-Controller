@@ -19,7 +19,7 @@ import ollama
 
 import audit
 
-DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "gpt-oss:20b-cloud")
+DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "gpt-oss:120b-cloud")
 MAX_TOOL_ITERATIONS = 5
 
 SYSTEM_PROMPT = """You are a reconciliation assistant for a finance-ops team. You answer questions about a Razorpay settlement reconciliation batch using ONLY the tools provided — you have no other knowledge of this batch's data.

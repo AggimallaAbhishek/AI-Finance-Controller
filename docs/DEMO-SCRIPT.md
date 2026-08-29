@@ -12,7 +12,7 @@ run since it isn't perfectly deterministic; the substance won't).
    subsequent ones. Run one throwaway call before the audience is watching:
    ```
    cd backend && source .venv/bin/activate
-   python3 -c "import ollama; ollama.chat(model='gpt-oss:20b-cloud', messages=[{'role':'user','content':'hi'}])"
+   python3 -c "import ollama; ollama.chat(model='gpt-oss:120b-cloud', messages=[{'role':'user','content':'hi'}])"
    ```
 2. **Start the backend**: `uvicorn main:app --port 8000` (from `backend/`)
 3. **Start the frontend**: `npm run dev` (from `frontend/`), open http://localhost:5173

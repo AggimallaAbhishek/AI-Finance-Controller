@@ -76,7 +76,7 @@ input rows and the rule (or LLM reasoning) that produced it.
 | Layer | Choice |
 |---|---|
 | Backend | Python / FastAPI |
-| Matching engine | Python rules + Ollama (`gpt-oss:20b-cloud` by default) for the ambiguous tier |
+| Matching engine | Python rules + Ollama (`gpt-oss:120b-cloud` by default) for the ambiguous tier |
 | Audit trail | SQLite, queryable by record ID |
 | Frontend | React (Vite), no router/state library |
 | Data | Synthetic CSV, 60 settlement/bank record pairs |
@@ -218,7 +218,7 @@ python3 audit_cli.py --db ../data/output/audit.db trace <settlement_id_or_txn_id
 ```
 `reconcile.py` writes `matches.csv`, `exceptions.csv`, and `audit.db` to
 `data/output/`. Add `--no-llm` to run rules only (fast, no network calls).
-Model defaults to `gpt-oss:20b-cloud`; override with `--model` or the
+Model defaults to `gpt-oss:120b-cloud`; override with `--model` or the
 `OLLAMA_MODEL` env var. Rule-tier tolerances default to 2 days /
 ₹10 — override with `RECONCILE_DATE_TOLERANCE_DAYS` /
 `RECONCILE_AMOUNT_TOLERANCE_RS`. A transient LLM call failure retries
