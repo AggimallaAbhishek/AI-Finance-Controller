@@ -15,6 +15,7 @@ import csv
 import difflib
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -30,6 +31,10 @@ DATE_TOLERANCE_DAYS = int(os.environ.get("RECONCILE_DATE_TOLERANCE_DAYS", "2"))
 AMOUNT_TOLERANCE_RS = Decimal(os.environ.get("RECONCILE_AMOUNT_TOLERANCE_RS", "10"))
 CANDIDATE_SCORE_FLOOR = 0.45
 MAX_CANDIDATES = 3
+# The LLM tier is network-bound (each call is a round trip to Ollama), so
+# calls are issued concurrently up to this many in flight at once. See
+# run_reconciliation's Tier 4 comment for how concurrency is kept safe.
+LLM_MAX_WORKERS = int(os.environ.get("RECONCILE_LLM_MAX_WORKERS", "8"))
 
 
 @dataclass
@@ -227,11 +232,66 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
             unresolved.append(s)
         report("rules", i + 1, len(settlements_sorted))
 
-    # Tier 4: LLM for the ambiguous middle
+    # Tier 4: LLM for the ambiguous middle. Each call is a network round
+    # trip to Ollama, so it's the dominant wall-clock cost at scale — calls
+    # are issued concurrently (up to LLM_MAX_WORKERS in flight) instead of
+    # one at a time.
+    #
+    # Correctness: a settlement's candidate shortlist depends on which bank
+    # entries are still unclaimed, and that set changes as earlier
+    # settlements in this tier get matched — the original sequential loop
+    # relied on `claimed` always being fully up to date at shortlist time.
+    # Running calls concurrently means each settlement's candidates get
+    # frozen (computed once, against claimed-after-rules) before any
+    # verdict comes back, so by the time we're ready to apply one, an
+    # earlier-applied settlement may have since claimed one of its
+    # candidates. So at apply time we recompute the live shortlist and only
+    # trust the concurrently-fetched verdict when it's identical to what
+    # was actually shown to the LLM; otherwise we redo that one
+    # settlement's call synchronously against the live candidates — exactly
+    # what the strictly sequential version would have done. This keeps the
+    # output identical to before, while parallelizing the common case.
+    def build_candidates(s, live_claimed):
+        unclaimed_bank = [b for b in bank_entries if b.txn_id not in live_claimed]
+        candidates = shortlist_candidates(s, unclaimed_bank)
+        candidate_dicts = [
+            {"txn_id": b.txn_id, "reference_id": b.reference_id, "amount": str(b.amount),
+             "date": b.date.isoformat(), "narration": b.narration}
+            for b in candidates
+        ]
+        return candidates, candidate_dicts
+
+    settlement_dicts = {
+        s.settlement_id: {
+            "settlement_id": s.settlement_id, "reference_id": s.reference_id,
+            "amount": str(s.amount), "date": s.date.isoformat(), "status": s.status,
+        }
+        for s in unresolved
+    }
+
+    claimed_after_rules = set(claimed)
+    frozen = {}       # settlement_id -> (candidates, candidate_dicts) at freeze time
+    llm_jobs = {}      # settlement_id -> Settlement, for those that actually need a call
+    for s in unresolved:
+        candidates, candidate_dicts = build_candidates(s, claimed_after_rules)
+        frozen[s.settlement_id] = (candidates, candidate_dicts)
+        if use_llm and candidates:
+            llm_jobs[s.settlement_id] = s
+
+    verdicts = {}
+    if llm_jobs:
+        with ThreadPoolExecutor(max_workers=min(LLM_MAX_WORKERS, len(llm_jobs))) as pool:
+            future_to_sid = {}
+            for sid, s in llm_jobs.items():
+                _, candidate_dicts = frozen[sid]
+                future = pool.submit(llm_fn, settlement_dicts[sid], candidate_dicts, model=model)
+                future_to_sid[future] = sid
+            for future in as_completed(future_to_sid):
+                verdicts[future_to_sid[future]] = future.result()
+
     exceptions = []
     for i, s in enumerate(unresolved):
-        unclaimed_bank = [b for b in bank_entries if b.txn_id not in claimed]
-        candidates = shortlist_candidates(s, unclaimed_bank)
+        candidates, candidate_dicts = frozen[s.settlement_id]
 
         if not use_llm or not candidates:
             if not use_llm:
@@ -263,16 +323,39 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
             report("llm", i + 1, len(unresolved))
             continue
 
-        candidate_dicts = [
-            {"txn_id": b.txn_id, "reference_id": b.reference_id, "amount": str(b.amount),
-             "date": b.date.isoformat(), "narration": b.narration}
-            for b in candidates
-        ]
-        settlement_dict = {
-            "settlement_id": s.settlement_id, "reference_id": s.reference_id,
-            "amount": str(s.amount), "date": s.date.isoformat(), "status": s.status,
-        }
-        verdict = llm_fn(settlement_dict, candidate_dicts, model=model)
+        live_candidates, live_candidate_dicts = build_candidates(s, claimed)
+        if [c.txn_id for c in live_candidates] == [c.txn_id for c in candidates]:
+            verdict = verdicts[s.settlement_id]
+            used_candidate_dicts = candidate_dicts
+        elif not live_candidates:
+            reason = "no plausible bank counterpart found (no candidates cleared the similarity floor)"
+            if s.status != "settled":
+                reason += f"; settlement status is '{s.status}'"
+            exceptions.append({
+                "match_status": "exception",
+                "settlement_ref": s.settlement_id,
+                "bank_ref": None,
+                "confidence": None,
+                "reason": reason,
+            })
+            audit_entries.append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "settlement_ref": s.settlement_id,
+                "bank_ref": None,
+                "match_status": "exception",
+                "confidence": None,
+                "reason": reason,
+                "tier": "rule",
+            })
+            report("llm", i + 1, len(unresolved))
+            continue
+        else:
+            # A concurrently-processed settlement claimed one of this
+            # settlement's candidates since it was frozen — redo the call
+            # synchronously against the now-current candidate set, same as
+            # sequential processing would have done at this point.
+            verdict = llm_fn(settlement_dicts[s.settlement_id], live_candidate_dicts, model=model)
+            used_candidate_dicts = live_candidate_dicts
 
         if verdict["match_found"]:
             b = bank_by_id[verdict["matched_bank_txn_id"]]
@@ -293,10 +376,10 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
                 "reason": verdict["reasoning"],
                 "tier": "llm",
                 "model": model or DEFAULT_MODEL,
-                "candidates_considered": [c["txn_id"] for c in candidate_dicts],
+                "candidates_considered": [c["txn_id"] for c in used_candidate_dicts],
             })
         else:
-            reason = f"LLM reviewed {len(candidates)} candidate(s), no match: {verdict['reasoning']}"
+            reason = f"LLM reviewed {len(used_candidate_dicts)} candidate(s), no match: {verdict['reasoning']}"
             exceptions.append({
                 "match_status": "exception",
                 "settlement_ref": s.settlement_id,
@@ -313,7 +396,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
                 "reason": reason,
                 "tier": "llm",
                 "model": model or DEFAULT_MODEL,
-                "candidates_considered": [c["txn_id"] for c in candidate_dicts],
+                "candidates_considered": [c["txn_id"] for c in used_candidate_dicts],
             })
         report("llm", i + 1, len(unresolved))
 
