@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { CheckCircleIcon, FileIcon, RobotIcon, RuleIcon } from './Icons'
 
 const STAGE_LABELS = {
@@ -14,6 +15,77 @@ const STEPS = [
   { stage: 'persisting', title: 'Finalizing Exceptions', Icon: CheckCircleIcon, waiting: 'Pending…' },
 ]
 const STAGE_ORDER = STEPS.map((s) => s.stage)
+
+// Returns the current time, ticking once a second while `active` so the
+// elapsed clock keeps moving smoothly between the 500ms status polls (a
+// poll only changes `job` when done/total/stage actually change, which can
+// be many seconds apart during a slow LLM call). Date.now() is read inside
+// the effect, not the render body, so the render itself stays pure.
+function useClock(active) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [active])
+  return now
+}
+
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000))
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
+  if (m === 0) return `${s}s`
+  return `${m}m ${s}s`
+}
+
+// Coarse overall-progress fraction: how far through the ordered stage list
+// we are, plus how far through the current stage's own done/total count.
+// Stages carry no relative weight (a 10,000-row "rules" pass and a
+// 5-record "llm" pass are wildly different durations), so this is a rough
+// signal for a live bar/ETA, not a precise one — good enough to answer
+// "is this almost done" without pretending to more accuracy than the
+// underlying per-stage counts support.
+function overallFraction(job) {
+  const currentIndex = STAGE_ORDER.indexOf(job.stage)
+  if (currentIndex === -1) return 0
+  const stageFraction = job.total > 0 ? job.done / job.total : 0
+  return (currentIndex + stageFraction) / STEPS.length
+}
+
+function TimeEstimate({ job }) {
+  const now = useClock(job?.status === 'running')
+  if (!job || job.status !== 'running' || !job.startedAt) return null
+
+  const fraction = overallFraction(job)
+  // Clamped to 0: `now` only refreshes once a second (see useClock), so
+  // for up to that first second of a new run it can still hold a stale
+  // value from before this run's startedAt — clamping avoids a flashed
+  // negative elapsed time in that gap instead of forcing a synchronous
+  // setState-in-effect just to close a sub-second window.
+  const elapsedMs = Math.max(0, now - job.startedAt)
+  const pct = Math.min(99, Math.round(fraction * 100))
+  // Extrapolating from under ~8% complete swings wildly (a slow first LLM
+  // call alone can eat most of a short run) — show "estimating…" instead
+  // of a number that would visibly jump around every poll.
+  const canEstimate = fraction > 0.08
+  const etaMs = canEstimate ? (elapsedMs * (1 - fraction)) / fraction : null
+
+  return (
+    <div className="engine-time-estimate">
+      <div className="reconcile-runner__bar reconcile-runner__bar--wide">
+        <div
+          className="reconcile-runner__bar-fill"
+          style={{ transform: `scaleX(${Math.max(fraction, 0.03)})` }}
+        />
+      </div>
+      <div className="engine-time-estimate__row muted">
+        <span>{pct}% complete · {formatDuration(elapsedMs)} elapsed</span>
+        <span>{canEstimate ? `~${formatDuration(etaMs)} remaining` : 'estimating time remaining…'}</span>
+      </div>
+    </div>
+  )
+}
 
 function Stepper({ job }) {
   const currentIndex = job?.status === 'running' ? STAGE_ORDER.indexOf(job.stage) : -1
@@ -58,6 +130,7 @@ export default function ReconcileProgress({ job, variant = 'inline' }) {
     return (
       <div className={`reconcile-stepper-panel${job ? '' : ' reconcile-stepper-panel--idle'}`}>
         <h3>Engine Status</h3>
+        <TimeEstimate job={job} />
         <Stepper job={job} />
       </div>
     )

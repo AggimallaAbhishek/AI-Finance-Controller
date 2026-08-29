@@ -1085,6 +1085,23 @@ button {
   white-space: nowrap;
 }
 
+.reconcile-runner__bar--wide {
+  width: 100%;
+}
+
+.engine-time-estimate {
+  margin-bottom: 18px;
+}
+
+.engine-time-estimate__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- upload & run tab ---------- */
 
 .upload-runner {

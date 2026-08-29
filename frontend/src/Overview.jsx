@@ -41,6 +41,7 @@ export default function Overview({
   const openPct = (totalExceptions / total) * 100
   const hasNonSettled = stats.settled_settlements != null && stats.settled_settlements < stats.total_settlements
   const matchablePct = stats.settled_settlements ? Math.round((stats.matched / stats.settled_settlements) * 100) : null
+  const nonSettledCount = stats.total_settlements - (stats.settled_settlements ?? stats.total_settlements)
 
   const preview = exceptions.slice(0, 5)
 
@@ -68,7 +69,13 @@ export default function Overview({
               matched ({stats.matched}/{stats.total_settlements})
             </span>
           </div>
-          <div className="overview-bar" role="img" aria-label={`${stats.rule_matched} matched by rule, ${stats.llm_matched} by LLM, ${stats.human_resolved} by you, ${totalExceptions} open exceptions`}>
+          {hasNonSettled && (
+            <p className="overview-card__meta">
+              {matchablePct}% of settleable settlements matched ({stats.matched}/{stats.settled_settlements}) —
+              the remaining {nonSettledCount} are reversed or pending, with no bank-side counterpart to match
+            </p>
+          )}
+          <div className="overview-bar" role="img" aria-label={`${ruleMatched} matched by rule, ${stats.llm_matched} by LLM, ${stats.human_resolved} by you, ${totalExceptions} open exceptions`}>
             <div className="overview-bar__seg overview-bar__seg--rule" style={{ width: `${rulePct}%` }} />
             <div className="overview-bar__seg overview-bar__seg--llm" style={{ width: `${llmPct}%` }} />
             <div className="overview-bar__seg overview-bar__seg--human" style={{ width: `${humanPct}%` }} />
@@ -77,7 +84,7 @@ export default function Overview({
           <div className="overview-legend">
             <span className="overview-legend__item">
               <span className="overview-legend__dot overview-legend__dot--rule" />
-              <strong>{stats.rule_matched}</strong>&nbsp;by rule
+              <strong>{ruleMatched}</strong>&nbsp;by rule
             </span>
             <span className="overview-legend__item">
               <span className="overview-legend__dot overview-legend__dot--llm" />

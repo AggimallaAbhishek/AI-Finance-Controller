@@ -17,7 +17,12 @@ export function useReconcileJob(onComplete) {
   async function poll(jobId) {
     try {
       const status = await getReconcileStatus(jobId)
-      setJob(status)
+      // The server response has no notion of when the job started (it's a
+      // one-shot progress ticket, not a durable record — see JOBS in
+      // main.py) — startedAt is purely client-side, seeded in start()
+      // below, and must be carried forward across every poll tick since
+      // each tick otherwise fully replaces the previous job object.
+      setJob((prev) => ({ ...status, startedAt: prev?.startedAt }))
       if (status.status === 'running') {
         pollRef.current = setTimeout(() => poll(jobId), POLL_INTERVAL_MS)
       } else if (status.status === 'done') {
@@ -29,7 +34,7 @@ export function useReconcileJob(onComplete) {
   }
 
   async function start(startFn) {
-    setJob({ status: 'running', stage: 'starting', done: 0, total: 0 })
+    setJob({ status: 'running', stage: 'starting', done: 0, total: 0, startedAt: Date.now() })
     try {
       const { job_id: jobId } = await startFn()
       poll(jobId)
