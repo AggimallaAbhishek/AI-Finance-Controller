@@ -114,10 +114,15 @@ def _build_tool_dispatch(conn, run_id):
         matches = audit.list_matches(conn, run_id)
         exceptions = audit.list_exceptions(conn, run_id)
         total_settlements = stored.get("total_settlements", 0)
+        # settled_settlements is frozen too — like total_settlements, a
+        # settlement's status never changes after the run, so unlike
+        # matched/exceptions there's no live-vs-snapshot divergence risk.
+        settled_settlements = stored.get("settled_settlements", 0)
         matched = len(matches)
         return {
             "total_settlements": total_settlements,
             "total_bank_entries": stored.get("total_bank_entries", 0),
+            "settled_settlements": settled_settlements,
             "matched": matched,
             "rule_matched": sum(1 for m in matches if m["tier"] == "rule"),
             "algo_matched": sum(1 for m in matches if m["tier"] == "algo"),
@@ -126,6 +131,12 @@ def _build_tool_dispatch(conn, run_id):
             "settlement_exceptions": sum(1 for e in exceptions if e["settlement_ref"]),
             "bank_exceptions": sum(1 for e in exceptions if e["bank_ref"] and not e["settlement_ref"]),
             "match_rate": round(matched / total_settlements, 4) if total_settlements else 0.0,
+            # Excludes reversed/pending settlements from the denominator —
+            # they have no bank-side counterpart to match by definition, so
+            # counting them against the rate conflates "couldn't find a
+            # match" with "there was never a match to find." See
+            # reconcile.py's stats dict for the full rationale.
+            "matchable_match_rate": round(matched / settled_settlements, 4) if settled_settlements else 0.0,
         }
 
     def list_exceptions():

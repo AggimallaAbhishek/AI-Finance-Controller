@@ -609,9 +609,21 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
                 "tier": "rule",
             })
 
+    # A "reversed"/"pending" settlement has no live bank-side money movement
+    # by definition (see the "skip the shortlist scoring" comment above) —
+    # it can never have a genuine counterpart, so it isn't a matching
+    # failure the engine could have avoided. match_rate below still counts
+    # it against the denominator (an honest, literal "of everything we were
+    # handed, what fraction matched"), but matchable_match_rate excludes it
+    # to answer the separate, equally honest question "of what could
+    # plausibly reconcile, what fraction did" — useful because the two can
+    # diverge a lot on a batch with many reversals/pending settlements, and
+    # blending them into one number hides that.
+    settled_settlements = sum(1 for s in settlements if s.status == "settled")
     stats = {
         "total_settlements": len(settlements),
         "total_bank_entries": len(bank_entries),
+        "settled_settlements": settled_settlements,
         "matched": len(matches),
         "rule_matched": sum(1 for m in matches if m["confidence"] not in ("llm-reasoned", "algo-reconstructed")),
         "algo_matched": sum(1 for m in matches if m["confidence"] == "algo-reconstructed"),
@@ -619,6 +631,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
         "settlement_exceptions": sum(1 for e in exceptions if e["settlement_ref"]),
         "bank_exceptions": sum(1 for e in exceptions if e["bank_ref"] and not e["settlement_ref"]),
         "match_rate": round(len(matches) / len(settlements), 4) if settlements else 0.0,
+        "matchable_match_rate": round(len(matches) / settled_settlements, 4) if settled_settlements else 0.0,
     }
     report("persisting", 0, 1)
     return matches, exceptions, audit_entries, stats

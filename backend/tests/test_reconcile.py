@@ -162,6 +162,25 @@ def test_run_reconciliation_resolves_corrupted_reference_without_llm_call():
     assert stats["llm_matched"] == 0
 
 
+def test_matchable_match_rate_excludes_non_settled_settlements():
+    # A reversed/pending settlement has no bank-side counterpart by
+    # definition — it shouldn't be held against the "of what could
+    # plausibly reconcile" rate the way it is against the plain one.
+    matched_s = settlement(id="STL1", ref="RZP1")
+    matched_b = bank(id="BTXN1", ref="RZP1")
+    reversed_s = settlement(id="STL2", ref="RZP2", status="reversed")
+
+    matches, exceptions, _, stats = run_reconciliation(
+        [matched_s, reversed_s], [matched_b], use_llm=False,
+    )
+
+    assert stats["total_settlements"] == 2
+    assert stats["settled_settlements"] == 1
+    assert stats["matched"] == 1
+    assert stats["match_rate"] == 0.5           # 1/2 — plain, literal rate
+    assert stats["matchable_match_rate"] == 1.0  # 1/1 — excludes the reversed settlement
+
+
 def test_rule_tier_tolerance_is_overridable_per_call():
     s = settlement(ref="RZP1", d=date(2026, 7, 1))
     b = bank(ref="RZP1", d=date(2026, 7, 4))  # 3 days off
