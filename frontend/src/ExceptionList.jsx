@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { getTrace, resolveException } from './api'
 import { downloadCsv } from './csv'
 import { BankIcon, PersonIcon, ReceiptIcon, RobotIcon, RuleIcon } from './Icons'
@@ -33,6 +33,12 @@ export function findCounterpartCandidates(allExceptions, exception) {
 }
 
 const MAX_VISIBLE_CANDIDATES = 8
+
+// A batch can carry tens of thousands of exceptions (see data/batch_50000)
+// — rendering all of them at once as DOM nodes locks up the tab. Page in
+// fixed chunks instead; "select all shown" and bulk-resolve still operate
+// on the full filtered set below, not just the rendered page.
+const PAGE_SIZE = 100
 
 export function filterCandidatesByQuery(candidates, query) {
   const q = query.trim().toLowerCase()
@@ -327,7 +333,7 @@ function BulkResolveBar({ selectedCount, onConfirmNoMatch, onClear }) {
   )
 }
 
-function ExceptionRow({ exception, allExceptions, runId, onResolved, selected, onToggleSelect }) {
+const ExceptionRow = memo(function ExceptionRow({ exception, allExceptions, runId, onResolved, selected, onToggleSelect }) {
   const [expanded, setExpanded] = useState(false)
   const [trace, setTrace] = useState(null)
   const [error, setError] = useState(null)
@@ -447,10 +453,18 @@ function ExceptionRow({ exception, allExceptions, runId, onResolved, selected, o
       )}
     </li>
   )
-}
+})
 
 export default function ExceptionList({ exceptions, allExceptions, allCount, runId, onResolved }) {
   const [selectedIds, setSelectedIds] = useState(new Set())
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  // Adjust state during render, not an effect — see MatchList's identical
+  // pattern for why. A new `exceptions` array means the filters changed.
+  const [prevExceptions, setPrevExceptions] = useState(exceptions)
+  if (exceptions !== prevExceptions) {
+    setPrevExceptions(exceptions)
+    setVisibleCount(PAGE_SIZE)
+  }
 
   // Only counts selections against currently-visible (filtered) rows —
   // a stale selection from before a filter change just stops mattering
@@ -474,14 +488,18 @@ export default function ExceptionList({ exceptions, allExceptions, allCount, run
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleSelectedIds.length])
 
-  function toggleSelect(id) {
+  // useCallback with no deps (the updater form of setState needs none) so
+  // this stays one stable function reference across re-renders — passed to
+  // every ExceptionRow as onToggleSelect, an unstable reference here would
+  // change that prop's identity every render and defeat the rows' memo.
+  const toggleSelect = useCallback((id) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
-  }
+  }, [])
 
   function toggleSelectAll() {
     setSelectedIds(allSelected ? new Set() : new Set(exceptions.map(recordIdOf)))
@@ -546,19 +564,31 @@ export default function ExceptionList({ exceptions, allExceptions, allCount, run
           {allCount === 0 ? 'No exceptions — every record matched.' : 'No exceptions match these filters.'}
         </p>
       ) : (
-        <ul className="exception-list__items">
-          {exceptions.map((e) => (
-            <ExceptionRow
-              key={e.id}
-              exception={e}
-              allExceptions={allExceptions}
-              runId={runId}
-              onResolved={onResolved}
-              selected={selectedIds.has(recordIdOf(e))}
-              onToggleSelect={toggleSelect}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className="exception-list__items">
+            {exceptions.slice(0, visibleCount).map((e) => (
+              <ExceptionRow
+                key={e.id}
+                exception={e}
+                allExceptions={allExceptions}
+                runId={runId}
+                onResolved={onResolved}
+                selected={selectedIds.has(recordIdOf(e))}
+                onToggleSelect={toggleSelect}
+              />
+            ))}
+          </ul>
+          {exceptions.length > visibleCount && (
+            <button
+              type="button"
+              className="list-load-more"
+              onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+            >
+              Load {Math.min(PAGE_SIZE, exceptions.length - visibleCount)} more (
+              {exceptions.length - visibleCount} remaining)
+            </button>
+          )}
+        </>
       )}
     </section>
   )

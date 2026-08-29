@@ -7,6 +7,13 @@
      LLM-reasoned result. */
   --text: #45464d;
   --text-h: #1b1b1d;
+  /* A real color, not var(--text) + opacity: opacity blends toward
+     whatever sits behind it, so the same "muted" rule silently loses
+     contrast on a tinted panel and gains it back on a plain one —
+     several call sites measured at 3.97:1 against --bg (fails WCAG AA's
+     4.5:1) before this token existed. 5.59:1 on --bg / 5.34:1 on
+     --surface, with real margin instead of a borderline pass. */
+  --text-muted: #63646b;
   --bg: #fcf8fa;
   --surface: #f6f3f5;
   --border: #e2e8f0;
@@ -97,8 +104,7 @@ button {
 }
 
 .muted {
-  color: var(--text);
-  opacity: 0.75;
+  color: var(--text-muted);
 }
 
 .error-text {
@@ -213,8 +219,7 @@ button {
 .topbar__run {
   font-family: var(--mono);
   font-size: 12px;
-  color: var(--text);
-  opacity: 0.7;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -491,8 +496,7 @@ button {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text);
-  opacity: 0.75;
+  color: var(--text-muted);
   padding: 10px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -521,8 +525,7 @@ button {
 }
 
 .overview-table__muted {
-  color: var(--text);
-  opacity: 0.7;
+  color: var(--text-muted);
 }
 
 .overview-table__reason {
@@ -570,6 +573,29 @@ button {
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+
+/* Shared by MatchList and ExceptionList: both page in fixed chunks
+   (data/batch_50000-scale runs carry tens of thousands of rows) rather
+   than rendering everything at once. */
+.list-load-more {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  text-align: center;
+}
+
+.list-load-more:hover {
+  background: var(--code-bg);
 }
 
 /* Round the container's corners on the first/last row instead of using
@@ -668,8 +694,7 @@ button {
 .exception-row__chevron {
   flex-shrink: 0;
   font-size: 18px;
-  color: var(--text);
-  opacity: 0.6;
+  color: var(--text-muted);
 }
 
 .exception-row__detail {
@@ -698,8 +723,7 @@ button {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text);
-  opacity: 0.75;
+  color: var(--text-muted);
 }
 
 .detail-grid dd {
@@ -742,8 +766,7 @@ button {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--text);
-  opacity: 0.85;
+  color: var(--text-muted);
 }
 
 .evidence-card .detail-grid {
@@ -784,8 +807,7 @@ button {
   justify-content: center;
   gap: 6px;
   padding: 0 2px;
-  color: var(--text);
-  opacity: 0.7;
+  color: var(--text-muted);
 }
 
 .evidence-connector svg {
@@ -865,8 +887,7 @@ button {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text);
-  opacity: 0.85;
+  color: var(--text-muted);
 }
 
 .resolve-form__field input,
@@ -1366,8 +1387,7 @@ button {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text);
-  opacity: 0.85;
+  color: var(--text-muted);
 }
 
 .filter-bar__field input,

@@ -1,10 +1,17 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { getTrace } from './api'
 import { downloadCsv } from './csv'
 import { TIER_GROUPS, TIER_HINTS, TIER_LABELS } from './tiers'
 import { BankIcon, LinkIcon, PersonIcon, ReceiptIcon, RobotIcon, RuleIcon } from './Icons'
 
 const TIER_ICONS = { rule: RuleIcon, llm: RobotIcon, human: PersonIcon }
+
+// A batch can carry tens of thousands of matches (see data/batch_50000) —
+// rendering all of them at once as DOM nodes locks up the tab. Page in
+// fixed chunks instead, same "preview, then more on demand" shape as
+// Overview's top-5-exceptions-then-view-all, applied to a list long
+// enough to need repeating rather than a one-time reveal.
+const PAGE_SIZE = 100
 
 function formatAmount(amount) {
   if (amount === null || amount === undefined) return '—'
@@ -30,7 +37,7 @@ function ConnectorBadges({ settlementRecord, bankRecord }) {
   )
 }
 
-function MatchRow({ match, runId }) {
+const MatchRow = memo(function MatchRow({ match, runId }) {
   const [expanded, setExpanded] = useState(false)
   const [trace, setTrace] = useState(null)
   const [error, setError] = useState(null)
@@ -153,9 +160,22 @@ function MatchRow({ match, runId }) {
       )}
     </li>
   )
-}
+})
 
 export default function MatchList({ matches, runId }) {
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  // Adjust state during render (React's documented pattern for "reset when
+  // a prop changes"), not an effect: an effect would commit the old page
+  // size first, paint up to PAGE_SIZE stale rows, then reset on the next
+  // tick — a visible flash, and an extra render pass for no benefit. A new
+  // `matches` array means the filters changed (App.jsx's useMemo only
+  // produces one when its inputs actually change).
+  const [prevMatches, setPrevMatches] = useState(matches)
+  if (matches !== prevMatches) {
+    setPrevMatches(matches)
+    setVisibleCount(PAGE_SIZE)
+  }
+
   function exportCsv() {
     downloadCsv(`matches-${runId}.csv`, matches, [
       { label: 'settlement_ref', value: (r) => r.settlement_ref },
@@ -166,6 +186,9 @@ export default function MatchList({ matches, runId }) {
       { label: 'reason', value: (r) => r.reason },
     ])
   }
+
+  const visible = matches.slice(0, visibleCount)
+  const remaining = matches.length - visible.length
 
   return (
     <section className="exception-list" aria-label="Matches">
@@ -180,11 +203,22 @@ export default function MatchList({ matches, runId }) {
       {matches.length === 0 ? (
         <p className="empty-state">No matches to show for these filters.</p>
       ) : (
-        <ul className="exception-list__items">
-          {matches.map((m) => (
-            <MatchRow key={m.id} match={m} runId={runId} />
-          ))}
-        </ul>
+        <>
+          <ul className="exception-list__items">
+            {visible.map((m) => (
+              <MatchRow key={m.id} match={m} runId={runId} />
+            ))}
+          </ul>
+          {remaining > 0 && (
+            <button
+              type="button"
+              className="list-load-more"
+              onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+            >
+              Load {Math.min(PAGE_SIZE, remaining)} more ({remaining} remaining)
+            </button>
+          )}
+        </>
       )}
     </section>
   )

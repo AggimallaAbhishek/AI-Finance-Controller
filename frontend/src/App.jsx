@@ -33,6 +33,13 @@ export default function App() {
     await refresh(runId)
   }, [refresh, runs])
 
+  // Stable across re-renders that don't change which run is loaded (filter
+  // edits, tab switches, pagination) — an inline `() => refresh(...)` at
+  // the call site would get a new identity every render and silently
+  // defeat ExceptionRow's memoization, since a changed callback prop is
+  // itself a reason to re-render.
+  const refreshCurrentRun = useCallback(() => refresh(run?.run_id), [refresh, run?.run_id])
+
   useEffect(() => {
     async function load() {
       try {
@@ -188,7 +195,7 @@ export default function App() {
                 allExceptions={exceptions}
                 allCount={exceptions.length}
                 runId={run.run_id}
-                onResolved={() => refresh(run.run_id)}
+                onResolved={refreshCurrentRun}
               />
             </>
           )}
