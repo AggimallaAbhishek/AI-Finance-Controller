@@ -23,6 +23,7 @@ import difflib
 import json
 import logging
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -714,9 +715,17 @@ def run_and_persist(settlement_path=None, bank_path=None, outdir=None, db_path=N
         settlements = load_settlements(settlement_path)
     bank_entries = load_bank_entries(bank_path)
 
+    # Wall-clock time for the matching engine itself — the dominant cost at
+    # scale is the LLM tier's network round trips, so this is what actually
+    # varies run to run (the same batch reconciled with --no-llm can be
+    # orders of magnitude faster). Measured the same way eval_reconcile.py
+    # measures it, for the same "before/after an optimization" comparison,
+    # except this number is persisted per run instead of printed once.
+    t0 = time.monotonic()
     matches, exceptions, audit_entries, stats = run_reconciliation(
         settlements, bank_entries, use_llm=use_llm, model=model, progress_cb=progress_cb
     )
+    stats["duration_seconds"] = round(time.monotonic() - t0, 2)
 
     fieldnames = ["match_status", "settlement_ref", "bank_ref", "confidence", "reason"]
     write_csv(outdir / "matches.csv", matches, fieldnames)
