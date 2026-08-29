@@ -567,6 +567,42 @@ up" on the same short budget. Re-verified with the same concurrency probe
 methodology (6 and 30-call sustained-load probes both clean) before
 re-running the real batch.
 
+Later hardened further: even 5-6 concurrent workers turned out to still
+occasionally 429 under sustained multi-endpoint load (the Q&A agent and
+reconciliation competing for the same account), so `LLM_MAX_WORKERS`'s
+default was lowered again to 1 (fully sequential) as the only setting
+confirmed reliable across sessions. With concurrency off the table, the
+batching effort below became the only remaining lever for wall-clock time.
+
+---
+
+### Batching the LLM tier instead of parallelizing it
+
+**Context:** with `LLM_MAX_WORKERS` pinned to 1 for reliability (above),
+concurrency can't reduce wall-clock time on the LLM tier — so
+`reconcile.py` was changed to optionally group multiple settlements into
+one Ollama call (`get_llm_verdicts_batch`, via `RECONCILE_LLM_BATCH_SIZE`)
+instead of one call per settlement, trading round trips for a slightly
+larger prompt per call. Shipped at a conservative default of
+`LLM_BATCH_SIZE=1` (identical to the original one-call-per-settlement
+behavior) pending validation that a real multi-settlement prompt doesn't
+degrade match quality.
+
+**Validation:** ran `eval_reconcile.py` against a 20-settlement slice of
+`data/batch_1000`'s LLM-eligible records (real `gpt-oss:20b-cloud` calls,
+no mock/cache — those adapt per-item and wouldn't exercise the real
+batched prompt) at `--batch-size 1` vs. `--batch-size 4`. Both runs scored
+100% accuracy/precision/recall with zero false positives or negatives —
+batching didn't change any verdict. Wall clock dropped from 288.9s to
+249.7s for the same 20 calls (~13% faster; batching amortizes round-trip
+overhead but each call now reasons over more input, so the gain is
+sub-linear, not 4x).
+
+**Fix:** raised `LLM_BATCH_SIZE`'s default from 1 to 4 now that accuracy
+is confirmed to hold. Tests that mock `llm_fn` directly (not
+`llm_batch_fn`) now pass `batch_size=1` explicitly so they stay pinned to
+the single-item code path regardless of this default.
+
 ---
 
 ## Template for new entries

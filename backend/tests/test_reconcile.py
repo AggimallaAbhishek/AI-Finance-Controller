@@ -52,7 +52,7 @@ def test_beyond_rule_tolerance_falls_to_llm_tier():
     def fake_llm_match(settlement_dict, candidate_dicts, model=None):
         return {"match_found": True, "matched_bank_txn_id": candidate_dicts[0]["txn_id"], "reasoning": "fake"}
 
-    matches, exceptions, _, _ = run_reconciliation([s], [b], use_llm=True, llm_fn=fake_llm_match)
+    matches, exceptions, _, _ = run_reconciliation([s], [b], use_llm=True, llm_fn=fake_llm_match, batch_size=1)
 
     assert len(matches) == 1
     assert matches[0]["confidence"] == "llm-reasoned"
@@ -66,7 +66,7 @@ def test_llm_no_match_becomes_exception():
     def fake_llm_no_match(settlement_dict, candidate_dicts, model=None):
         return {"match_found": False, "matched_bank_txn_id": None, "reasoning": "no evidence"}
 
-    matches, exceptions, _, stats = run_reconciliation([s], [b], use_llm=True, llm_fn=fake_llm_no_match)
+    matches, exceptions, _, stats = run_reconciliation([s], [b], use_llm=True, llm_fn=fake_llm_no_match, batch_size=1)
 
     assert matches == []
     assert len(exceptions) == 2  # settlement-side AND the now-unclaimed bank entry
@@ -131,7 +131,7 @@ def test_progress_cb_reports_real_stage_and_counts():
 
     events = []
     run_reconciliation(
-        [s1, s2], [b1, b2], use_llm=True, llm_fn=fake_llm_match,
+        [s1, s2], [b1, b2], use_llm=True, llm_fn=fake_llm_match, batch_size=1,
         progress_cb=lambda stage, done, total: events.append((stage, done, total)),
     )
 

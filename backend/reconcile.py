@@ -46,11 +46,14 @@ MAX_CANDIDATES = 3
 LLM_MAX_WORKERS = int(os.environ.get("RECONCILE_LLM_MAX_WORKERS", "1"))
 # With concurrency off the table, the remaining lever for real wall-clock
 # time is fewer round trips: batch this many settlements into one LLM call
-# (get_llm_verdicts_batch) instead of one call per settlement. 1 preserves
-# the original one-call-per-settlement behavior exactly (default — used by
-# every existing test's llm_fn mock). Only raise it after confirming via
-# the eval harness that batched accuracy holds — see docs/BUILD-CHALLENGES.md.
-LLM_BATCH_SIZE = int(os.environ.get("RECONCILE_LLM_BATCH_SIZE", "1"))
+# (get_llm_verdicts_batch) instead of one call per settlement. Validated via
+# the eval harness against real gpt-oss:20b-cloud calls (batch_size=1 vs. 4
+# on the same 20 llm-tier settlements from data/batch_1000): accuracy held
+# at 100% both ways (no batching-induced FP/FN), and wall clock dropped from
+# 288.9s to 249.7s (~13% fewer seconds per call) — see docs/BUILD-CHALLENGES.md.
+# Tests that mock llm_fn directly (not llm_batch_fn) pass batch_size=1
+# explicitly so they're unaffected by this default.
+LLM_BATCH_SIZE = int(os.environ.get("RECONCILE_LLM_BATCH_SIZE", "4"))
 
 
 @dataclass
