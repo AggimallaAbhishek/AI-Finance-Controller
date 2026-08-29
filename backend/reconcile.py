@@ -273,6 +273,17 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
     frozen = {}       # settlement_id -> (candidates, candidate_dicts) at freeze time
     llm_jobs = {}      # settlement_id -> Settlement, for those that actually need a call
     for s in unresolved:
+        # A non-"settled" settlement (reversed/pending) has no live bank-side
+        # money movement to find a counterpart for, so it can never have a
+        # genuine match — skip the O(bank_entries) shortlist scoring for it
+        # entirely rather than fuzzy-searching for a counterpart that by
+        # definition doesn't exist. This is the dominant cost saving at
+        # scale (shortlist_candidates is the other O(settlements x
+        # bank_entries) hotspot, separate from the rule tier), since
+        # roughly half of what reaches this tier is typically this status.
+        if s.status != "settled":
+            frozen[s.settlement_id] = ([], [])
+            continue
         candidates, candidate_dicts = build_candidates(s, claimed_after_rules)
         frozen[s.settlement_id] = (candidates, candidate_dicts)
         if use_llm and candidates:
@@ -299,11 +310,14 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
                 if candidates:
                     reason += f"; {len(candidates)} candidate(s) existed but were not reviewed"
                 tier = "skipped-llm"
+                if s.status != "settled":
+                    reason += f"; settlement status is '{s.status}'"
+            elif s.status != "settled":
+                reason = f"no bank counterpart search performed; settlement status is '{s.status}', not 'settled'"
+                tier = "rule"
             else:
                 reason = "no plausible bank counterpart found (no candidates cleared the similarity floor)"
                 tier = "rule"
-            if s.status != "settled":
-                reason += f"; settlement status is '{s.status}'"
             exceptions.append({
                 "match_status": "exception",
                 "settlement_ref": s.settlement_id,
