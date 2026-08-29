@@ -13,7 +13,7 @@ export const TIERS = [
   { value: 'fuzzy-date', label: 'Fuzzy date', group: 'rule', hint: 'reference_id and amount matched exactly; date drifted within tolerance' },
   { value: 'fuzzy-amount', label: 'Fuzzy amount', group: 'rule', hint: 'reference_id and date matched exactly; amount drifted within tolerance' },
   { value: 'fuzzy-date-amount', label: 'Fuzzy date+amount', group: 'rule', hint: 'reference_id matched exactly; both date and amount drifted within tolerance' },
-  { value: 'algo-reconstructed', label: 'Reference reconstructed', group: 'rule', hint: 'amount matched exactly and a corrupted bank reference_id (case flip, truncation, or a swapped pair) was reconstructed by edit distance, corroborated by the narration — deterministic, no LLM call' },
+  { value: 'algo-reconstructed', label: 'Reference reconstructed', group: 'llm', hint: 'amount matched exactly and a corrupted bank reference_id (case flip, truncation, or a swapped pair) was reconstructed by edit distance, corroborated by the narration, then confirmed by the LLM before being accepted — read the reasoning before trusting it the same as an exact match' },
   { value: 'llm-reasoned', label: 'LLM-reasoned', group: 'llm', hint: "matched by Ollama's reasoning over both records — not a deterministic rule; read the reasoning before trusting it the same as an exact match" },
   { value: 'human-resolved', label: 'Human-resolved', group: 'human', hint: 'manually confirmed by a person, with a note explaining why' },
 ]

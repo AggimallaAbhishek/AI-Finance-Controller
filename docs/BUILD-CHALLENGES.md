@@ -651,6 +651,49 @@ trusting `batch_50000`'s eval-harness accuracy number at face value.
 
 ---
 
+### Tier 3.5 auto-accepted without an LLM call — reversed to require verification
+
+**Context:** the previous entry's Tier 3.5 auto-accepted an edit-distance +
+narration match with zero LLM involvement. That's correct on this
+synthetic data (validated at the time), but edit-distance + a narration
+substring is still a heuristic, not an identity check — on real (non-
+synthetic) bank exports it's plausible for an unrelated reference_id to
+coincidentally land within edit distance with a coincidentally-matching
+narration substring, especially at scale. Explicitly requested: require an
+LLM to confirm every Tier 3.5 candidate before accepting it, rather than
+trusting the heuristic alone.
+
+**Fix:** `run_reconciliation()`'s Tier 3.5 loop now sends each
+algorithmically-identified candidate to `llm_fn` as a single-candidate
+verification call before accepting it (`reconcile.py`, the `algo_verified`
+block). Three outcomes:
+  - LLM confirms → accepted as `algo-reconstructed`, same as before, with
+    the LLM's reasoning appended to the audit reason and `model`/
+    `candidates_considered` populated for traceability.
+  - LLM rejects → falls through to the normal Tier 4 path with the full
+    multi-candidate shortlist (not discarded, and not retried against a
+    second algo candidate) — confirmed working on real data below.
+  - `use_llm=False` → Tier 3.5 doesn't fire at all (nothing to verify
+    with), same "LLM tier skipped" exception path any other
+    ambiguous-middle settlement gets without an LLM available.
+
+**Validation:** re-ran the same real-`gpt-oss:20b-cloud`, no-mock/no-cache
+methodology as the batching validation — 20 llm-tier settlements sliced
+from `data/batch_1000`. Result: 19/20 confirmed by the verification call
+and accepted as `algo-reconstructed`; 1 was rejected by the narrower
+single-candidate prompt but correctly fell through and was resolved by
+Tier 4's full-context reasoning (`llm-reasoned`) — the fallthrough path
+worked on a real rejection, not just in a hand-written test. Final
+accuracy/precision/recall: 1.0000, zero false positives, across both
+paths combined. Wall clock: 79.7s for those 20 calls (~4s/call average) —
+notably faster than the original pre-Tier-3.5 baseline's ~14.5s/call
+(same doc, batching section), because a single-candidate yes/no
+confirmation prompt is simpler for the model to reason over than the
+original multi-candidate prompt, even though a call is now made for
+essentially every one of these settlements again.
+
+---
+
 ## Template for new entries
 
 ```

@@ -143,23 +143,79 @@ def test_algo_tier_rejects_beyond_date_window():
     assert algo_tier(s, b) is None
 
 
-def test_run_reconciliation_resolves_corrupted_reference_without_llm_call():
+def test_run_reconciliation_verifies_algo_match_with_llm_before_accepting():
+    # A Tier 3.5 candidate is identified deterministically but still sent to
+    # the LLM for a single-candidate confirmation before being accepted —
+    # never auto-accepted on edit-distance/narration evidence alone.
     s = settlement(ref="RZP1234567890", amount="1000.00", d=date(2026, 7, 1))
     b = bank(ref="RZP1234567", amount="1000.00", d=date(2026, 7, 5),
              narration="UPI-RAZORPAY SETTLEMENT ORDER 567890")
 
-    def should_not_be_called(*args, **kwargs):
-        raise AssertionError("Tier 3.5 should resolve this without an LLM call")
+    calls = []
+
+    def confirming_llm(settlement_dict, candidate_dicts, model=None):
+        calls.append(candidate_dicts)
+        return {"match_found": True, "matched_bank_txn_id": candidate_dicts[0]["txn_id"], "reasoning": "confirmed"}
 
     matches, exceptions, _, stats = run_reconciliation(
-        [s], [b], use_llm=True, llm_fn=should_not_be_called, batch_size=1,
+        [s], [b], use_llm=True, llm_fn=confirming_llm, batch_size=1,
     )
 
+    assert len(calls) == 1  # exactly one verification call, for the single algo candidate
+    assert len(calls[0]) == 1
     assert len(matches) == 1
     assert matches[0]["confidence"] == "algo-reconstructed"
+    assert "LLM-confirmed" in matches[0]["reason"]
     assert exceptions == []
     assert stats["algo_matched"] == 1
     assert stats["llm_matched"] == 0
+
+
+def test_algo_candidate_rejected_by_llm_falls_through_to_tier4():
+    # A narrower single-candidate verification prompt says no, but the full
+    # multi-candidate Tier 4 reasoning (with more context) still finds it —
+    # the rejection must fall through, not just give up.
+    s = settlement(ref="RZP1234567890", amount="1000.00", d=date(2026, 7, 1))
+    b = bank(ref="RZP1234567", amount="1000.00", d=date(2026, 7, 5),
+             narration="UPI-RAZORPAY SETTLEMENT ORDER 567890")
+
+    call_sizes = []
+
+    def picky_llm(settlement_dict, candidate_dicts, model=None):
+        # First call is Tier 3.5's verification (rejected); second is Tier
+        # 4's own call for the same settlement after the fallthrough.
+        call_sizes.append(len(candidate_dicts))
+        if len(call_sizes) == 1:
+            return {"match_found": False, "matched_bank_txn_id": None, "reasoning": "not sure yet"}
+        return {"match_found": True, "matched_bank_txn_id": b.txn_id, "reasoning": "confirmed on reconsideration"}
+
+    matches, exceptions, _, stats = run_reconciliation(
+        [s], [b], use_llm=True, llm_fn=picky_llm, batch_size=1,
+    )
+
+    assert call_sizes == [1, 1]  # verification call, then Tier 4's own single-item call
+    assert len(matches) == 1
+    assert matches[0]["confidence"] == "llm-reasoned"
+    assert matches[0]["bank_ref"] == b.txn_id
+    assert exceptions == []
+    assert stats["algo_matched"] == 0
+    assert stats["llm_matched"] == 1
+
+
+def test_algo_candidate_skipped_entirely_without_llm():
+    # use_llm=False means no LLM is available to verify with — a Tier 3.5
+    # candidate must not be auto-accepted just because an LLM isn't around;
+    # it falls through to the same "LLM tier skipped" exception path any
+    # other ambiguous-middle settlement gets.
+    s = settlement(ref="RZP1234567890", amount="1000.00", d=date(2026, 7, 1))
+    b = bank(ref="RZP1234567", amount="1000.00", d=date(2026, 7, 5),
+             narration="UPI-RAZORPAY SETTLEMENT ORDER 567890")
+
+    matches, exceptions, _, stats = run_reconciliation([s], [b], use_llm=False)
+
+    assert matches == []
+    assert len(exceptions) == 2  # the settlement, and the now-unclaimed bank entry
+    assert stats["algo_matched"] == 0
 
 
 def test_matchable_match_rate_excludes_non_settled_settlements():

@@ -5,8 +5,10 @@ DATE_TOLERANCE_DAYS / AMOUNT_TOLERANCE_RS.
 Tier 3.5 (algorithmic reference reconstruction): catches the specific
 failure mode of a bank-mangled reference_id (case flip, truncation, or an
 adjacent-character transposition) with an exact amount and narration that
-still names the true reference's tail — resolved by edit-distance, not a
-network call. See algo_tier().
+still names the true reference's tail — identified by edit-distance, then
+confirmed with a single-candidate LLM call before being accepted (an
+edit-distance match is strong evidence, not an identity check). See
+algo_tier().
 Tier 4 (Ollama): records neither of the above could confidently resolve get
 sent, with their top candidate bank entries, for a reasoned match/no-match
 verdict. Anything left over becomes an exception.
@@ -19,6 +21,7 @@ import argparse
 import csv
 import difflib
 import json
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -29,6 +32,8 @@ from uuid import uuid4
 
 import audit
 from llm_matcher import get_llm_verdict, get_llm_verdicts_batch, DEFAULT_MODEL
+
+logger = logging.getLogger("reconcile")
 
 # Configurable without a code change — see docs/glossary.md for what these
 # tolerances mean. Defaults match the ones the batch was designed against.
@@ -219,7 +224,10 @@ def algo_tier(settlement, bank):
         than the rule tier's window, since the other three signals
         already establish identity; still bounded, not unlimited)
     Any single signal here is too weak to trust alone — together they're
-    strong enough to skip the LLM call entirely."""
+    strong enough to identify a candidate worth proposing, but the caller
+    (run_reconciliation) still sends it to the LLM for a single-candidate
+    confirmation before accepting it; this function only identifies the
+    candidate, it never calls the LLM itself."""
     if settlement.amount != bank.amount:
         return None
 
@@ -391,7 +399,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
     claimed_after_rules = set(claimed)
     frozen = {}       # settlement_id -> (candidates, candidate_dicts) at freeze time
     llm_jobs = {}      # settlement_id -> Settlement, for those that actually need a call
-    algo_resolved_ids = set()  # settlement_ids Tier 3.5 resolved without an LLM call
+    algo_resolved_ids = set()  # settlement_ids Tier 3.5 resolved (LLM-verified)
     for s in unresolved:
         # A non-"settled" settlement (reversed/pending) has no live bank-side
         # money movement to find a counterpart for, so it can never have a
@@ -406,20 +414,38 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
             continue
         candidates, candidate_dicts = build_candidates(s, claimed_after_rules)
 
-        # Tier 3.5: try to resolve deterministically against this same
+        # Tier 3.5: identify a candidate deterministically against this same
         # shortlist (already ranked by candidate_score, which rewards
-        # reference similarity/amount/date/narration) before spending an
-        # LLM call. Sequential like the rule tier above — not concurrent
-        # like Tier 4 below — so claiming a candidate here is immediately
-        # visible to every later settlement's shortlist in this same loop.
-        algo_hit = None
-        for b in candidates:
-            verdict = algo_tier(s, b)
-            if verdict:
-                algo_hit = (b, verdict)
-                break
-        if algo_hit:
-            b, (confidence, reason) = algo_hit
+        # reference similarity/amount/date/narration), then require an LLM
+        # call to confirm it before accepting — edit-distance + narration is
+        # strong evidence but still a heuristic, not an identity check, so
+        # every algo-identified candidate gets a second opinion rather than
+        # being auto-accepted. Only runs when an LLM is actually available
+        # (use_llm) — without one, a Tier 3.5 candidate falls through to the
+        # normal Tier 4 path below like any other ambiguous-middle
+        # settlement, never auto-accepted unverified. Sequential like the
+        # rule tier above — not concurrent like Tier 4 — so claiming a
+        # candidate here is immediately visible to every later settlement's
+        # shortlist in this same loop.
+        algo_verified = None
+        if use_llm:
+            for i, b in enumerate(candidates):
+                verdict = algo_tier(s, b)
+                if not verdict:
+                    continue
+                confidence, reason = verdict
+                check = llm_fn(settlement_dicts[s.settlement_id], [candidate_dicts[i]], model=model)
+                if check["match_found"] and check["matched_bank_txn_id"] == b.txn_id:
+                    algo_verified = (b, confidence, f"{reason}; LLM-confirmed: {check['reasoning']}")
+                else:
+                    logger.info(
+                        "Tier 3.5 candidate for %s (%s) rejected by LLM verification (%s) — "
+                        "falling through to Tier 4 with the full candidate set",
+                        s.settlement_id, b.txn_id, check["reasoning"],
+                    )
+                break  # only the top algo candidate is tried; a rejection falls through, not to candidate #2
+        if algo_verified:
+            b, confidence, reason = algo_verified
             claimed_after_rules.add(b.txn_id)
             claimed.add(b.txn_id)
             algo_resolved_ids.add(s.settlement_id)
@@ -438,6 +464,8 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
                 "confidence": confidence,
                 "reason": reason,
                 "tier": "algo",
+                "model": model or DEFAULT_MODEL,
+                "candidates_considered": [b.txn_id],
             })
             continue
 
