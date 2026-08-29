@@ -32,16 +32,18 @@ AMOUNT_TOLERANCE_RS = Decimal(os.environ.get("RECONCILE_AMOUNT_TOLERANCE_RS", "1
 CANDIDATE_SCORE_FLOOR = 0.45
 MAX_CANDIDATES = 3
 # The LLM tier is network-bound (each call is a round trip to Ollama), so
-# calls are issued concurrently up to this many in flight at once. See
-# run_reconciliation's Tier 4 comment for how concurrency is kept safe.
-# 5 (not higher) because it's empirically the endpoint's real ceiling: a
-# direct concurrency probe against gpt-oss:20b-cloud measured 6 concurrent
-# requests sustaining 30/30 successes, while 8 (the original default)
-# rejected roughly two-thirds of calls outright with HTTP 429 ("too many
-# concurrent requests") — see docs/BUILD-CHALLENGES.md. 5 keeps a margin
-# below the observed 6-workers-safe/8-workers-fails boundary for other
-# concurrent Ollama traffic (e.g. the Q&A agent) sharing the same limit.
-LLM_MAX_WORKERS = int(os.environ.get("RECONCILE_LLM_MAX_WORKERS", "5"))
+# calls are issued concurrently up to this many in flight at once — IF the
+# endpoint actually tolerates it. Default is 1 (effectively sequential):
+# a concurrency probe using real reconciliation-shaped prompts (not a
+# trivial "reply with a number" one — see docs/BUILD-CHALLENGES.md for why
+# that first probe was misleading) found gpt-oss:20b-cloud fails ~90% of
+# calls with HTTP 429 at just 2 concurrent requests, because a real call
+# holds the connection open for ~30s of actual reasoning — long enough for
+# concurrent calls to genuinely overlap and collide with what looks like a
+# near-single-flight limit on this account/endpoint. Only raise this via
+# RECONCILE_LLM_MAX_WORKERS if your Ollama account/model is confirmed (via
+# the same realistic-prompt probe methodology) to tolerate more.
+LLM_MAX_WORKERS = int(os.environ.get("RECONCILE_LLM_MAX_WORKERS", "1"))
 
 
 @dataclass
