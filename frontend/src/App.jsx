@@ -74,15 +74,24 @@ export default function App() {
   const liveStats = useMemo(() => {
     if (!run) return null
     const totalSettlements = run.stats.total_settlements
+    // settled_settlements is frozen at reconcile time, like total_settlements
+    // above — a settlement's status never changes after the run, so there's
+    // no live-vs-snapshot divergence to worry about here.
+    const settledSettlements = run.stats.settled_settlements
     return {
       total_settlements: totalSettlements,
+      settled_settlements: settledSettlements,
       matched: matches.length,
       rule_matched: matches.filter((m) => m.tier === 'rule').length,
+      algo_matched: matches.filter((m) => m.tier === 'algo').length,
       llm_matched: matches.filter((m) => m.tier === 'llm').length,
       human_resolved: matches.filter((m) => m.tier === 'human').length,
       settlement_exceptions: exceptions.filter((e) => e.settlement_ref).length,
       bank_exceptions: exceptions.filter((e) => e.bank_ref && !e.settlement_ref).length,
       match_rate: totalSettlements ? matches.length / totalSettlements : 0,
+      // Excludes reversed/pending settlements from the denominator — see
+      // reconcile.py's stats dict for the full rationale.
+      matchable_match_rate: settledSettlements ? matches.length / settledSettlements : 0,
     }
   }, [run, matches, exceptions])
 

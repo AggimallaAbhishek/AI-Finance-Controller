@@ -31,10 +31,16 @@ export default function Overview({
   const matchPct = Math.round(stats.match_rate * 100)
   const total = stats.total_settlements || 1
   const totalExceptions = stats.settlement_exceptions + stats.bank_exceptions
-  const rulePct = (stats.rule_matched / total) * 100
+  // algo-reconstructed matches share the rule segment/color: both are "the
+  // deterministic engine decided this, no LLM call," differentiated by
+  // label (see tiers.js), not by a dedicated hue in the provenance palette.
+  const ruleMatched = stats.rule_matched + (stats.algo_matched || 0)
+  const rulePct = (ruleMatched / total) * 100
   const llmPct = (stats.llm_matched / total) * 100
   const humanPct = (stats.human_resolved / total) * 100
   const openPct = (totalExceptions / total) * 100
+  const hasNonSettled = stats.settled_settlements != null && stats.settled_settlements < stats.total_settlements
+  const matchablePct = stats.settled_settlements ? Math.round((stats.matched / stats.settled_settlements) * 100) : null
 
   const preview = exceptions.slice(0, 5)
 
