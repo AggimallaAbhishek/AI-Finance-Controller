@@ -34,7 +34,14 @@ MAX_CANDIDATES = 3
 # The LLM tier is network-bound (each call is a round trip to Ollama), so
 # calls are issued concurrently up to this many in flight at once. See
 # run_reconciliation's Tier 4 comment for how concurrency is kept safe.
-LLM_MAX_WORKERS = int(os.environ.get("RECONCILE_LLM_MAX_WORKERS", "8"))
+# 5 (not higher) because it's empirically the endpoint's real ceiling: a
+# direct concurrency probe against gpt-oss:20b-cloud measured 6 concurrent
+# requests sustaining 30/30 successes, while 8 (the original default)
+# rejected roughly two-thirds of calls outright with HTTP 429 ("too many
+# concurrent requests") — see docs/BUILD-CHALLENGES.md. 5 keeps a margin
+# below the observed 6-workers-safe/8-workers-fails boundary for other
+# concurrent Ollama traffic (e.g. the Q&A agent) sharing the same limit.
+LLM_MAX_WORKERS = int(os.environ.get("RECONCILE_LLM_MAX_WORKERS", "5"))
 
 
 @dataclass

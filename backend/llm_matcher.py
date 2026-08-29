@@ -19,6 +19,16 @@ logger = logging.getLogger("llm_matcher")
 DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "gpt-oss:20b-cloud")
 MAX_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 0.5
+# A 429 means the endpoint is rejecting the call outright because too many
+# requests are already in flight — it returns almost instantly (confirmed
+# empirically: ~0.3-0.4s, versus multiple seconds for a real inference), so
+# it's a near-guaranteed success on retry once other in-flight calls clear,
+# not a random transient blip. It gets more attempts and a longer backoff
+# than a generic failure so concurrent LLM-tier callers (reconcile.py's
+# thread pool) don't silently downgrade a rate-limited call into a false
+# "no match" exception.
+MAX_ATTEMPTS_RATE_LIMITED = 6
+BACKOFF_BASE_SECONDS_RATE_LIMITED = 1.0
 
 PROMPT_TEMPLATE = """You are reconciling a Razorpay settlement record against candidate bank statement entries. Bank exports sometimes mangle reference_id (case changes, truncation, transposed digits) and post a few days after the settlement date, so use amount, date proximity, reference_id similarity, and narration together — not any single field alone.
 
@@ -112,7 +122,9 @@ def get_llm_verdict(settlement, candidates, model=None, sleep_fn=time.sleep):
     )
 
     last_error = None
-    for attempt in range(MAX_ATTEMPTS):
+    max_attempts = MAX_ATTEMPTS
+    attempt = 0
+    while attempt < max_attempts:
         try:
             resp = ollama.chat(
                 model=model,
@@ -123,23 +135,34 @@ def get_llm_verdict(settlement, candidates, model=None, sleep_fn=time.sleep):
         except Exception as e:
             last_error = e
             settlement_id = settlement.get("settlement_id", "?")
-            if attempt < MAX_ATTEMPTS - 1:
-                delay = BACKOFF_BASE_SECONDS * (2 ** attempt)
+            rate_limited = getattr(e, "status_code", None) == 429
+            if rate_limited:
+                # Widen the budget the first time a 429 is seen, so a call
+                # that only ever hits rate-limiting (never a real error)
+                # gets the full rate-limited retry budget even though it
+                # started counting against the smaller default one.
+                max_attempts = max(max_attempts, MAX_ATTEMPTS_RATE_LIMITED)
+                backoff_base = BACKOFF_BASE_SECONDS_RATE_LIMITED
+            else:
+                backoff_base = BACKOFF_BASE_SECONDS
+            if attempt < max_attempts - 1:
+                delay = backoff_base * (2 ** attempt)
                 logger.warning(
                     "LLM call failed for %s on attempt %d/%d (%s), retrying in %.1fs",
-                    settlement_id, attempt + 1, MAX_ATTEMPTS, e, delay,
+                    settlement_id, attempt + 1, max_attempts, e, delay,
                 )
                 sleep_fn(delay)
             else:
                 logger.warning(
                     "LLM call failed for %s on attempt %d/%d (%s), gave up",
-                    settlement_id, attempt + 1, MAX_ATTEMPTS, e,
+                    settlement_id, attempt + 1, max_attempts, e,
                 )
+            attempt += 1
             continue
         return _parse_verdict(raw, candidates)
 
     return {
         "match_found": False,
         "matched_bank_txn_id": None,
-        "reasoning": f"LLM call failed after {MAX_ATTEMPTS} attempts: {last_error}",
+        "reasoning": f"LLM call failed after {max_attempts} attempts: {last_error}",
     }
