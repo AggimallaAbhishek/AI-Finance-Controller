@@ -96,7 +96,15 @@ def build_batch(count, seed):
     n_fuzzy_amount = round(count * 0.10)
     n_llm = round(count * 0.10)
     n_settlement_only = count - (n_exact + n_fuzzy_date + n_fuzzy_amount + n_llm)
-    n_orphans = 6
+    # Mirrors n_settlement_only exactly (rather than a fixed count) so
+    # settlement.csv and bank_statement.csv always end up the same length:
+    # every matched category already contributes exactly one row to each
+    # side, so the two "no counterpart on the other side" buckets need to
+    # be equal in size too, not just each individually non-empty. A fixed
+    # small n_orphans (previously 6) matched settlement.csv's length only
+    # by coincidence at count=60 and silently diverged from it at every
+    # other batch size.
+    n_orphans = n_settlement_only
 
     settlement_rows = []
     bank_rows = []
