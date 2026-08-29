@@ -2,9 +2,14 @@
 
 Tier 1-3 (rules, deterministic): exact reference_id join, then within
 DATE_TOLERANCE_DAYS / AMOUNT_TOLERANCE_RS.
-Tier 4 (Ollama): records the rules can't confidently resolve get sent, with
-their top candidate bank entries, for a reasoned match/no-match verdict.
-Anything left over becomes an exception.
+Tier 3.5 (algorithmic reference reconstruction): catches the specific
+failure mode of a bank-mangled reference_id (case flip, truncation, or an
+adjacent-character transposition) with an exact amount and narration that
+still names the true reference's tail — resolved by edit-distance, not a
+network call. See algo_tier().
+Tier 4 (Ollama): records neither of the above could confidently resolve get
+sent, with their top candidate bank entries, for a reasoned match/no-match
+verdict. Anything left over becomes an exception.
 
 Runnable as a script:
   python reconcile.py --settlement ../data/settlement.csv --bank ../data/bank_statement.csv
@@ -31,6 +36,13 @@ DATE_TOLERANCE_DAYS = int(os.environ.get("RECONCILE_DATE_TOLERANCE_DAYS", "2"))
 AMOUNT_TOLERANCE_RS = Decimal(os.environ.get("RECONCILE_AMOUNT_TOLERANCE_RS", "10"))
 CANDIDATE_SCORE_FLOOR = 0.45
 MAX_CANDIDATES = 3
+# Tier 3.5 thresholds — deliberately independent of DATE_TOLERANCE_DAYS
+# above (which governs a *clean* reference match): a corrupted reference
+# needs corroborating evidence (exact amount + narration) before a wider
+# date window is trusted, so this tolerance can safely be looser than the
+# rule tier's without that meaning "we trust dates more" in general.
+ALGO_DATE_TOLERANCE_DAYS = int(os.environ.get("RECONCILE_ALGO_DATE_TOLERANCE_DAYS", "7"))
+ALGO_REF_EDIT_DISTANCE_MAX = int(os.environ.get("RECONCILE_ALGO_REF_EDIT_DISTANCE", "3"))
 # The LLM tier is network-bound (each call is a round trip to Ollama), so
 # calls are issued concurrently up to this many in flight at once — IF the
 # endpoint actually tolerates it. Default is 1 (effectively sequential):
@@ -154,6 +166,85 @@ def rule_tier(settlement, bank, date_tolerance_days=None, amount_tolerance_rs=No
             f"and amount by Rs {amount_diff}, both within tolerance"
         )
     return None
+
+
+def _restricted_edit_distance(a, b):
+    """Levenshtein distance with adjacent transpositions counted as a
+    single edit (the "optimal string alignment" variant — simpler than
+    full Damerau-Levenshtein since it doesn't need to handle a
+    transposed pair being re-edited later, which never matters for
+    reference IDs this short). O(len(a) * len(b)); cheap for ~13-char
+    strings. Matches the corruption styles a bank export realistically
+    introduces: a substituted/dropped character or one swapped pair."""
+    la, lb = len(a), len(b)
+    d = [[0] * (lb + 1) for _ in range(la + 1)]
+    for i in range(la + 1):
+        d[i][0] = i
+    for j in range(lb + 1):
+        d[0][j] = j
+    for i in range(1, la + 1):
+        for j in range(1, lb + 1):
+            cost = 0 if a[i - 1] == b[j - 1] else 1
+            d[i][j] = min(
+                d[i - 1][j] + 1,         # deletion
+                d[i][j - 1] + 1,         # insertion
+                d[i - 1][j - 1] + cost,  # substitution
+            )
+            if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
+                d[i][j] = min(d[i][j], d[i - 2][j - 2] + 1)  # adjacent transposition
+    return d[la][lb]
+
+
+def algo_tier(settlement, bank):
+    """Return ("algo-reconstructed", reason) if a corrupted bank
+    reference_id can be confidently reconstructed against this
+    settlement, else None.
+
+    Targets the one failure mode the rule tier structurally can't reach:
+    rule_tier() requires reference_id equality (case-normalized) up
+    front, so a bank export that truncates, transposes, or otherwise
+    mangles the reference never even gets compared on date/amount. This
+    tier runs only on settlements the rule tier already gave up on
+    (candidates come from the same shortlist built for the LLM), and
+    requires ALL of:
+      - amount matches exactly (no drift tolerance — a corrupted
+        reference is already one uncertain signal; stacking a fuzzy
+        amount on top would make coincidental collisions too likely)
+      - the two reference_ids (case-folded) are within
+        ALGO_REF_EDIT_DISTANCE_MAX edits of each other
+      - the settlement reference's last 6 characters appear in the bank
+        narration (independent corroboration, not derived from the
+        edit-distance check)
+      - date differs by no more than ALGO_DATE_TOLERANCE_DAYS (wider
+        than the rule tier's window, since the other three signals
+        already establish identity; still bounded, not unlimited)
+    Any single signal here is too weak to trust alone — together they're
+    strong enough to skip the LLM call entirely."""
+    if settlement.amount != bank.amount:
+        return None
+
+    date_diff = abs((settlement.date - bank.date).days)
+    if date_diff > ALGO_DATE_TOLERANCE_DAYS:
+        return None
+
+    ref_tail = settlement.reference_id[-6:].lower()
+    if ref_tail not in bank.narration.lower():
+        return None
+
+    distance = _restricted_edit_distance(
+        settlement.reference_id.lower(), bank.reference_id.lower()
+    )
+    if distance > ALGO_REF_EDIT_DISTANCE_MAX:
+        return None
+
+    return "algo-reconstructed", (
+        f"amount matched exactly; bank reference_id '{bank.reference_id}' is "
+        f"within edit distance {distance} of settlement reference_id "
+        f"'{settlement.reference_id}' (case-insensitive), and narration "
+        f"'{bank.narration}' contains its tail '{settlement.reference_id[-6:]}'; "
+        f"date differs by {date_diff} day(s), beyond the {DATE_TOLERANCE_DAYS}-day "
+        f"rule tolerance but within the {ALGO_DATE_TOLERANCE_DAYS}-day algorithmic window"
+    )
 
 
 def candidate_score(settlement, bank):
@@ -300,6 +391,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
     claimed_after_rules = set(claimed)
     frozen = {}       # settlement_id -> (candidates, candidate_dicts) at freeze time
     llm_jobs = {}      # settlement_id -> Settlement, for those that actually need a call
+    algo_resolved_ids = set()  # settlement_ids Tier 3.5 resolved without an LLM call
     for s in unresolved:
         # A non-"settled" settlement (reversed/pending) has no live bank-side
         # money movement to find a counterpart for, so it can never have a
@@ -313,9 +405,47 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
             frozen[s.settlement_id] = ([], [])
             continue
         candidates, candidate_dicts = build_candidates(s, claimed_after_rules)
+
+        # Tier 3.5: try to resolve deterministically against this same
+        # shortlist (already ranked by candidate_score, which rewards
+        # reference similarity/amount/date/narration) before spending an
+        # LLM call. Sequential like the rule tier above — not concurrent
+        # like Tier 4 below — so claiming a candidate here is immediately
+        # visible to every later settlement's shortlist in this same loop.
+        algo_hit = None
+        for b in candidates:
+            verdict = algo_tier(s, b)
+            if verdict:
+                algo_hit = (b, verdict)
+                break
+        if algo_hit:
+            b, (confidence, reason) = algo_hit
+            claimed_after_rules.add(b.txn_id)
+            claimed.add(b.txn_id)
+            algo_resolved_ids.add(s.settlement_id)
+            matches.append({
+                "match_status": "matched",
+                "settlement_ref": s.settlement_id,
+                "bank_ref": b.txn_id,
+                "confidence": confidence,
+                "reason": reason,
+            })
+            audit_entries.append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "settlement_ref": s.settlement_id,
+                "bank_ref": b.txn_id,
+                "match_status": "matched",
+                "confidence": confidence,
+                "reason": reason,
+                "tier": "algo",
+            })
+            continue
+
         frozen[s.settlement_id] = (candidates, candidate_dicts)
         if use_llm and candidates:
             llm_jobs[s.settlement_id] = s
+
+    llm_remaining = [s for s in unresolved if s.settlement_id not in algo_resolved_ids]
 
     verdicts = {}
     if llm_jobs and batch_size <= 1:
@@ -345,7 +475,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
                 verdicts.update(future.result())
 
     exceptions = []
-    for i, s in enumerate(unresolved):
+    for i, s in enumerate(llm_remaining):
         candidates, candidate_dicts = frozen[s.settlement_id]
 
         if not use_llm or not candidates:
@@ -378,7 +508,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
                 "reason": reason,
                 "tier": tier,
             })
-            report("llm", i + 1, len(unresolved))
+            report("llm", i + 1, len(llm_remaining))
             continue
 
         live_candidates, live_candidate_dicts = build_candidates(s, claimed)
@@ -405,7 +535,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
                 "reason": reason,
                 "tier": "rule",
             })
-            report("llm", i + 1, len(unresolved))
+            report("llm", i + 1, len(llm_remaining))
             continue
         else:
             # A concurrently-processed settlement claimed one of this
@@ -456,7 +586,7 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
                 "model": model or DEFAULT_MODEL,
                 "candidates_considered": [c["txn_id"] for c in used_candidate_dicts],
             })
-        report("llm", i + 1, len(unresolved))
+        report("llm", i + 1, len(llm_remaining))
 
     # Unclaimed bank rows are bank-side exceptions
     for b in bank_entries:
@@ -483,7 +613,8 @@ def run_reconciliation(settlements, bank_entries, use_llm=True, llm_fn=get_llm_v
         "total_settlements": len(settlements),
         "total_bank_entries": len(bank_entries),
         "matched": len(matches),
-        "rule_matched": sum(1 for m in matches if m["confidence"] != "llm-reasoned"),
+        "rule_matched": sum(1 for m in matches if m["confidence"] not in ("llm-reasoned", "algo-reconstructed")),
+        "algo_matched": sum(1 for m in matches if m["confidence"] == "algo-reconstructed"),
         "llm_matched": sum(1 for m in matches if m["confidence"] == "llm-reasoned"),
         "settlement_exceptions": sum(1 for e in exceptions if e["settlement_ref"]),
         "bank_exceptions": sum(1 for e in exceptions if e["bank_ref"] and not e["settlement_ref"]),
