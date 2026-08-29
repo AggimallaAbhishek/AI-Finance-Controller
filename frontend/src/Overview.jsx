@@ -1,6 +1,7 @@
 import { DownloadIcon, FilterIcon, PlayIcon } from './Icons'
 import RunPicker from './RunPicker'
 import ReconcileRunner from './ReconcileRunner'
+import { formatDuration } from './duration'
 
 function formatTimestamp(iso) {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -57,7 +58,10 @@ export default function Overview({
               <h1>Reconciliation Overview</h1>
               <code className="overview-card__run-id">{run.run_id}</code>
             </div>
-            <p className="overview-card__meta">Run completed {formatTimestamp(run.timestamp)}</p>
+            <p className="overview-card__meta">
+              Run completed {formatTimestamp(run.timestamp)}
+              {stats.duration_seconds != null && ` · took ${formatDuration(stats.duration_seconds)}`}
+            </p>
           </div>
           <div className="overview-card__actions">
             <RunPicker runs={runs} currentRunId={run.run_id} onSelect={onSelectRun} />

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CheckCircleIcon, FileIcon, RobotIcon, RuleIcon } from './Icons'
+import { formatDuration } from './duration'
 
 const STAGE_LABELS = {
   starting: 'Starting…',
@@ -29,14 +30,6 @@ function useClock(active) {
     return () => clearInterval(id)
   }, [active])
   return now
-}
-
-function formatDuration(ms) {
-  const totalSeconds = Math.max(0, Math.round(ms / 1000))
-  const m = Math.floor(totalSeconds / 60)
-  const s = totalSeconds % 60
-  if (m === 0) return `${s}s`
-  return `${m}m ${s}s`
 }
 
 // Coarse overall-progress fraction: how far through the ordered stage list
@@ -80,8 +73,8 @@ function TimeEstimate({ job }) {
         />
       </div>
       <div className="engine-time-estimate__row muted">
-        <span>{pct}% complete · {formatDuration(elapsedMs)} elapsed</span>
-        <span>{canEstimate ? `~${formatDuration(etaMs)} remaining` : 'estimating time remaining…'}</span>
+        <span>{pct}% complete · {formatDuration(elapsedMs / 1000)} elapsed</span>
+        <span>{canEstimate ? `~${formatDuration(etaMs / 1000)} remaining` : 'estimating time remaining…'}</span>
       </div>
     </div>
   )

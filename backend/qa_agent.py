@@ -137,6 +137,9 @@ def _build_tool_dispatch(conn, run_id):
             # match" with "there was never a match to find." See
             # reconcile.py's stats dict for the full rationale.
             "matchable_match_rate": round(matched / settled_settlements, 4) if settled_settlements else 0.0,
+            # How long the automated engine took — frozen at reconcile time,
+            # same reasoning as total_settlements/settled_settlements above.
+            "duration_seconds": stored.get("duration_seconds"),
         }
 
     def list_exceptions():

@@ -327,6 +327,7 @@ def test_run_and_persist_defaults_to_csv_source(tmp_path):
     result = run_and_persist(settlement_path, bank_path, outdir=tmp_path / "output")
     assert result["stats"]["matched"] == 1
     assert result["matches"][0]["settlement_ref"] == "STL1"
+    assert result["stats"]["duration_seconds"] >= 0
 
 
 def test_run_and_persist_razorpay_source_never_touches_settlement_csv(tmp_path, monkeypatch):

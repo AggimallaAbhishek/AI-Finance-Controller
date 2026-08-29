@@ -92,6 +92,10 @@ export default function App() {
       // Excludes reversed/pending settlements from the denominator — see
       // reconcile.py's stats dict for the full rationale.
       matchable_match_rate: settledSettlements ? matches.length / settledSettlements : 0,
+      // How long the automated engine took, frozen at reconcile time like
+      // total_settlements above — a later human resolution doesn't change
+      // how long the original run took, so this is never recomputed live.
+      duration_seconds: run.stats.duration_seconds,
     }
   }, [run, matches, exceptions])
 
