@@ -63,16 +63,35 @@ def rand_date(rng):
     return BASE_DATE + timedelta(days=rng.randint(0, DATE_SPREAD_DAYS))
 
 
-def make_reference_id(rng):
-    return f"RZP{rng.randint(10**9, 10**10 - 1)}"
+def _make_unique_id(rng, prefix, digits, seen):
+    """Retry on collision within this batch — plain rng.randint alone hits
+    real birthday-bound collisions well within the batch sizes this
+    generator is asked to produce (e.g. ~14 duplicate 8-digit settlement_ids
+    confirmed at count=50000), and a duplicate settlement_id isn't just a
+    cosmetic risk: audit.save_settlements()'s (run_id, settlement_id)
+    PRIMARY KEY makes it a real IntegrityError crash the first time that
+    batch is actually reconciled through the app, not merely a synthetic-
+    data quirk. `seen` is scoped to one build_batch() call/one output
+    batch — collisions across unrelated batches don't matter, since their
+    CSVs are never loaded together."""
+    lo, hi = 10 ** (digits - 1), 10**digits - 1
+    while True:
+        candidate = f"{prefix}{rng.randint(lo, hi)}"
+        if candidate not in seen:
+            seen.add(candidate)
+            return candidate
 
 
-def make_settlement_id(rng):
-    return f"STL{rng.randint(10**7, 10**8 - 1)}"
+def make_reference_id(rng, seen):
+    return _make_unique_id(rng, "RZP", 10, seen)
 
 
-def make_txn_id(rng):
-    return f"BTXN{rng.randint(10**9, 10**10 - 1)}"
+def make_settlement_id(rng, seen):
+    return _make_unique_id(rng, "STL", 8, seen)
+
+
+def make_txn_id(rng, seen):
+    return _make_unique_id(rng, "BTXN", 10, seen)
 
 
 def corrupt_reference_id(rng, ref):
@@ -90,6 +109,12 @@ def corrupt_reference_id(rng, ref):
 
 def build_batch(count, seed):
     rng = random.Random(seed)
+    seen_settlement_ids = set()
+    seen_txn_ids = set()
+    # Shared by pair references AND orphan bank rows' own reference_id
+    # (line below) — an orphan coincidentally sharing a reference_id with
+    # some settlement would stop being a genuine orphan.
+    seen_refs = set()
 
     n_exact = round(count * 0.55)
     n_fuzzy_date = round(count * 0.15)
@@ -112,7 +137,7 @@ def build_batch(count, seed):
 
     def add_matched_pair(category, settlement_id, ref, amount, s_date, b_date,
                           b_amount, narration):
-        txn_id = make_txn_id(rng)
+        txn_id = make_txn_id(rng, seen_txn_ids)
         settlement_rows.append({
             "settlement_id": settlement_id,
             "reference_id": ref,
@@ -136,51 +161,56 @@ def build_batch(count, seed):
 
     # Exact matches
     for _ in range(n_exact):
-        ref = make_reference_id(rng)
+        ref = make_reference_id(rng, seen_refs)
         amount = rand_amount(rng)
         s_date = rand_date(rng)
         narration = rng.choice(CLEAN_NARRATIONS).format(ref=ref)
-        add_matched_pair("exact", make_settlement_id(rng), ref, amount,
+        add_matched_pair("exact", make_settlement_id(rng, seen_settlement_ids), ref, amount,
                           s_date, s_date, amount, narration)
 
     # Fuzzy date-drift matches (1-2 days, within rule tolerance)
     for _ in range(n_fuzzy_date):
-        ref = make_reference_id(rng)
+        ref = make_reference_id(rng, seen_refs)
         amount = rand_amount(rng)
         s_date = rand_date(rng)
         b_date = s_date + timedelta(days=rng.choice([1, 2]))
         narration = rng.choice(CLEAN_NARRATIONS).format(ref=ref)
-        add_matched_pair("fuzzy_date", make_settlement_id(rng), ref, amount,
+        add_matched_pair("fuzzy_date", make_settlement_id(rng, seen_settlement_ids), ref, amount,
                           s_date, b_date, amount, narration)
 
     # Fuzzy amount matches (Rs 1-9 deduction, within rule tolerance)
     for _ in range(n_fuzzy_amount):
-        ref = make_reference_id(rng)
+        ref = make_reference_id(rng, seen_refs)
         amount = rand_amount(rng)
         b_amount = round(amount - rng.uniform(1, 9), 2)
         s_date = rand_date(rng)
         narration = rng.choice(CLEAN_NARRATIONS).format(ref=ref)
-        add_matched_pair("fuzzy_amount", make_settlement_id(rng), ref, amount,
+        add_matched_pair("fuzzy_amount", make_settlement_id(rng, seen_settlement_ids), ref, amount,
                           s_date, s_date, b_amount, narration)
 
     # LLM-reasoned: reference_id corrupted AND date drifts 3-5 days
     # (beyond rule tolerance), but narration still names the merchant/order.
     for _ in range(n_llm):
-        ref = make_reference_id(rng)
+        ref = make_reference_id(rng, seen_refs)
         noisy_ref = corrupt_reference_id(rng, ref)
         amount = rand_amount(rng)
         s_date = rand_date(rng)
         b_date = s_date + timedelta(days=rng.choice([3, 4, 5]))
         narration = rng.choice(NOISY_NARRATIONS).format(ref_tail=ref[-6:])
-        add_matched_pair("llm_reasoned", make_settlement_id(rng), ref, amount,
+        add_matched_pair("llm_reasoned", make_settlement_id(rng, seen_settlement_ids), ref, amount,
                           s_date, b_date, amount, narration)
         # overwrite the just-appended bank row's reference_id with the noisy one
+        # (corrupt_reference_id's output is deliberately NOT deduplicated: it
+        # lands in bank_entries.reference_id, which is not a primary/unique
+        # key anywhere, so a coincidental collision there is a rare, low-
+        # impact matching-ambiguity risk, not a crash risk — not worth the
+        # complexity of retrying the corruption style/positions to avoid it)
         bank_rows[-1]["reference_id"] = noisy_ref
 
     # Settlement-only exceptions: reversed/pending, no bank counterpart
     for _ in range(n_settlement_only):
-        settlement_id = make_settlement_id(rng)
-        ref = make_reference_id(rng)
+        settlement_id = make_settlement_id(rng, seen_settlement_ids)
+        ref = make_reference_id(rng, seen_refs)
         amount = rand_amount(rng)
         s_date = rand_date(rng)
         status = rng.choice(["reversed", "pending"])
@@ -200,11 +230,11 @@ def build_batch(count, seed):
 
     # Bank-only orphans: unrelated transactions, no settlement counterpart
     for _ in range(n_orphans):
-        txn_id = make_txn_id(rng)
+        txn_id = make_txn_id(rng, seen_txn_ids)
         narration = rng.choice(ORPHAN_NARRATIONS).format(city=rng.choice(CITIES))
         bank_rows.append({
             "txn_id": txn_id,
-            "reference_id": make_reference_id(rng),
+            "reference_id": make_reference_id(rng, seen_refs),
             "amount": f"{rand_amount(rng, 100, 20000):.2f}",
             "date": rand_date(rng).isoformat(),
             "narration": narration,

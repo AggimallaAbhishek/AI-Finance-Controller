@@ -746,6 +746,74 @@ as the price of confirming every heuristic match.
 
 ---
 
+### Duplicate settlement/bank/reference IDs at scale — a real crash, not just a scoring artifact
+
+**Issue:** the "two false positives at `batch_50000`" note earlier in this
+doc was filed as an eval-harness measurement quirk (settlement_id-keyed
+scoring dicts misattributing one of 14 colliding IDs). Revisited during a
+correctness/data-quality pass and found to be worse than that framing
+suggested: `generate_synthetic_data.py`'s `make_settlement_id()`/
+`make_txn_id()`/`make_reference_id()` drew plain `rng.randint()` values
+with no collision tracking, so at `count=50000` the 8-digit settlement_id
+space (~9×10⁷ combinations) hits its birthday bound and produces real
+duplicates — 14 of them, confirmed. Traced further than the eval harness:
+`audit.py`'s `settlements` table has `PRIMARY KEY (run_id, settlement_id)`,
+so reconciling `batch_50000` through the actual running app — not just the
+eval harness — throws a genuine `sqlite3.IntegrityError` and fails
+outright. Confirmed directly: calling `audit.save_settlements()` with the
+loaded batch crashed before the fix, succeeded after.
+
+**Fix:** `_make_unique_id()` (`generate_synthetic_data.py`) retries on
+collision within one `build_batch()` call, tracked via three `seen` sets
+(settlement_id, txn_id, and reference_id — the last shared between paired
+references and orphan bank rows' own reference_id, since an orphan
+coincidentally matching a real settlement's reference would stop being a
+genuine orphan). Deliberately did *not* dedupe `corrupt_reference_id()`'s
+output: it lands in `bank_entries.reference_id`, which isn't a primary key
+anywhere, so a coincidental collision there is a rare, low-impact
+matching-ambiguity risk, not a crash risk — not worth retrying the
+corruption itself to avoid it.
+
+**Validation:** regenerating every existing batch with the fix changed
+only `batch_50000` (`git status` confirmed the rest byte-identical — no
+collision ever occurred at the smaller sizes, so nothing to retry). Full
+re-verification on the regenerated `batch_50000`: `audit.save_settlements`
+no longer crashes; `eval_reconcile.py --mock-llm` went from
+accuracy=0.9996 (2 FP, 19 FN) to a clean 1.0000 with zero FP/FN — the
+"scoring artifact" and the crash were the same root cause, and both are
+gone. Added `data/test_generate_synthetic_data.py` (4 tests, run via
+`python3 -m pytest data/test_generate_synthetic_data.py` — outside
+`backend/pytest.ini`'s `testpaths = tests`, so not part of the main suite)
+to catch a regression here directly rather than relying on noticing a
+downstream crash or a suspicious accuracy number again.
+
+---
+
+### Re-probing concurrency and batching after the default model changed to gpt-oss:120b-cloud
+
+**Context:** the 6-workers-safe/8-workers-fails concurrency boundary and
+the `LLM_BATCH_SIZE=4` batching validation earlier in this doc were both
+measured against `gpt-oss:20b-cloud`. After switching the default model to
+`gpt-oss:120b-cloud`, those numbers were untested assumptions for the new
+model, not re-verified facts.
+
+**Re-validation:** re-ran the same 30-call sustained-load probe
+methodology against `gpt-oss:120b-cloud` at 2/4/6/8 concurrent workers:
+2, 4, and 6 all completed 30/30 cleanly; 8 failed 23/30 with HTTP 429 —
+the identical boundary found for the 20b model, consistent with the rate
+limit being enforced per-account rather than per-model. Notably, wall
+time barely differed between 2 workers (100.7s) and 6 workers (106.6s)
+for the same 30 calls — concurrency isn't leaving speed on the table
+even where it's nominally safe, reinforcing (not just permitting)
+`LLM_MAX_WORKERS`'s existing default of 1. Separately re-ran the 20-item
+real-LLM Tier 3.5 verification validation against `gpt-oss:120b-cloud`:
+20/20 confirmed, 74.3s (~3.7s/call, in line with the 20b model's ~4s/call),
+100% accuracy. No changes made — both defaults (`LLM_MAX_WORKERS=1`,
+`LLM_BATCH_SIZE=4`) are now confirmed correct for the model actually in
+use, not just inherited from testing against a different one.
+
+---
+
 ## Template for new entries
 
 ```
